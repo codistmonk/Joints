@@ -147,7 +147,7 @@ public final class Demo {
 					drawAxes(canvas, orbiter);
 				}
 				
-				while (2.0 < stickMan.update()) {
+				while (1.0 < stickMan.update()) {
 					orbiter.getUpdateNeeded().set(true);
 				}
 				
@@ -250,6 +250,8 @@ public final class Demo {
 		
 		private final int[] segments;
 		
+		private final int[] muscles;
+		
 		public StickMan(final DoubleList vertices, final DoubleList masses) {
 			this.constraints = new ArrayList<Constraint>();
 			this.offset = vertices.size();
@@ -301,7 +303,7 @@ public final class Demo {
 					// left leg
 					3, 4,
 					4, 5,
-					// bust
+					// torso
 					2, 6,
 					6, 5,
 					5, 2,
@@ -319,6 +321,25 @@ public final class Demo {
 					12, 13,
 					13, 14,
 			};
+			this.muscles = new int[] {
+					// right leg
+					0, 2,
+					1, 5,
+					// left leg
+					3, 5,
+					4, 2,
+					// torso
+					2, 11,
+					5, 14,
+					// head
+					6, 8,
+					// right arm
+					9, 11,
+					10, 7,
+					// left arm
+					12, 14,
+					13, 7,
+			};
 			
 			{
 				final int n = this.segments.length;
@@ -330,10 +351,6 @@ public final class Demo {
 					
 					this.constraints.add(new Constraint(i1, i2).setDistance(distance(this.vertices.toArray(), i1, i2)));
 				}
-				
-//				for (int i = this.offset; i < this.nextOffset; i += 3) {
-//					this.constraints.add(new Constraint(0, i / 3).setDistance(640000000.0).setStrength(0.001));
-//				}
 			}
 		}
 		
@@ -365,6 +382,20 @@ public final class Demo {
 				for (int i = 0; i < n; i += 2) {
 					final int v0 = this.offset + 3 * this.segments[i + 0];
 					final int v1 = this.offset + 3 * this.segments[i + 1];
+					
+					g.drawLine(iround(locations[v0 + 0]), bottom - iround(locations[v0 + 1]),
+							iround(locations[v1 + 0]), bottom - iround(locations[v1 + 1]));
+				}
+			}
+			
+			{
+				g.setColor(Color.YELLOW);
+				
+				final int n = this.muscles.length;
+				
+				for (int i = 0; i < n; i += 2) {
+					final int v0 = this.offset + 3 * this.muscles[i + 0];
+					final int v1 = this.offset + 3 * this.muscles[i + 1];
 					
 					g.drawLine(iround(locations[v0 + 0]), bottom - iround(locations[v0 + 1]),
 							iround(locations[v1 + 0]), bottom - iround(locations[v1 + 1]));
