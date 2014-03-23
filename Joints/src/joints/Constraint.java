@@ -12,6 +12,8 @@ import static net.sourceforge.aprog.tools.Tools.cast;
 
 import java.io.Serializable;
 
+import net.sourceforge.aprog.tools.Tools;
+
 /**
  * @author codistmonk (creation 2014-03-17)
  */
@@ -48,6 +50,12 @@ public final class Constraint implements Serializable, Comparable<Constraint> {
 	
 	public final Constraint setPreferredDistance(final double preferredDistance) {
 		this.preferredDistance = preferredDistance;
+		
+		return this;
+	}
+	
+	public final Constraint setClampedPreferredDistance(final double preferredDistance) {
+		this.preferredDistance = max(this.getMinimumDistance(), min(preferredDistance, this.getMaximumDistance()));
 		
 		return this;
 	}
@@ -155,6 +163,8 @@ public final class Constraint implements Serializable, Comparable<Constraint> {
 		for (final Constraint constraint : constraints) {
 			result = max(result, constraint.apply(locations, masses));
 		}
+		
+		Tools.debugPrint(result);
 		
 		return result;
 	}
