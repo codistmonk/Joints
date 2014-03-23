@@ -371,6 +371,44 @@ public final class Demo {
 					this.constraints.add(new Constraint(i1, i2).setPreferredDistance(distance(this.vertices.toArray(), i1, i2)));
 				}
 			}
+			
+			{
+				// right leg
+				this.addMuscleConstraint(0, 1, 2);
+				this.addMuscleConstraint(1, 2, 5);
+				// left leg
+				this.addMuscleConstraint(3, 4, 5);
+				this.addMuscleConstraint(4, 5, 2);
+				// torso
+				this.addMuscleConstraint(2, 6, 11);
+				this.addMuscleConstraint(5, 6, 14);
+				// head
+				this.addMuscleConstraint(6, 7, 8);
+				// right arm
+				this.addMuscleConstraint(9, 10, 11);
+				this.addMuscleConstraint(10, 11, 7);
+				// left arm
+				this.addMuscleConstraint(12, 13, 14);
+				this.addMuscleConstraint(13, 14, 7);
+			}
+		}
+		
+		private final Constraint addMuscleConstraint(final int... path) {
+			final int i0 = this.offset / 3;
+			final double[] vertices = this.vertices.toArray();
+			final int n = path.length;
+			double maximumDistance = 0.0;
+			
+			for (int i = 0; i < n - 1; ++i) {
+				maximumDistance += distance(vertices, i0 + path[i], i0 + path[i + 1]);
+			}
+			
+			final Constraint result = new Constraint(i0 + path[0], i0 + path[n - 1])
+				.setMinimumDistance(maximumDistance / 2.0).setMaximumDistance(maximumDistance);
+			
+			this.constraints.add(result);
+			
+			return result;
 		}
 		
 		public final StickMan translate(final double tx, final double ty, final double tz) {
