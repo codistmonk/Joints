@@ -1,5 +1,6 @@
 package joints;
 
+import static java.lang.Math.abs;
 import static java.lang.Math.cos;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
@@ -26,6 +27,8 @@ public final class Constraint implements Serializable, Comparable<Constraint> {
 	
 	private double maximumDistance;
 	
+	private double preferredDistance;
+	
 	private double strength;
 	
 	public Constraint(final int index1, final int index2) {
@@ -33,6 +36,7 @@ public final class Constraint implements Serializable, Comparable<Constraint> {
 		this.index2 = max(index1, index2);
 		this.minimumDistance = Double.NEGATIVE_INFINITY;
 		this.maximumDistance = Double.POSITIVE_INFINITY;
+		this.preferredDistance = Double.NaN;
 		this.strength = 1.0;
 	}
 	
@@ -40,8 +44,14 @@ public final class Constraint implements Serializable, Comparable<Constraint> {
 		return this.minimumDistance;
 	}
 	
-	public final Constraint setDistance(final double distance) {
-		return this.setMinimumDistance(distance).setMaximumDistance(distance);
+	public final double getPreferredDistance() {
+		return this.preferredDistance;
+	}
+	
+	public final Constraint setPreferredDistance(final double preferredDistance) {
+		this.preferredDistance = preferredDistance;
+		
+		return this;
 	}
 	
 	public final Constraint setMinimumDistance(final double minimumDistance) {
@@ -83,7 +93,10 @@ public final class Constraint implements Serializable, Comparable<Constraint> {
 		final double currentDistance = distance(locations, this.getIndex1(), this.getIndex2());
 		final double targetDistance;
 		
-		if (currentDistance < this.getMinimumDistance()) {
+		if (!Double.isNaN(this.getPreferredDistance())) {
+			result = abs(this.getPreferredDistance() - currentDistance);
+			targetDistance = this.getPreferredDistance();
+		} else if (currentDistance < this.getMinimumDistance()) {
 			result = this.getMinimumDistance() - currentDistance;
 			targetDistance = this.getMinimumDistance();
 		} else if (this.getMaximumDistance() < currentDistance) {

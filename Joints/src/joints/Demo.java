@@ -368,7 +368,7 @@ public final class Demo {
 					final int i1 = i0 + this.segments[i + 0];
 					final int i2 = i0 + this.segments[i + 1];
 					
-					this.constraints.add(new Constraint(i1, i2).setDistance(distance(this.vertices.toArray(), i1, i2)));
+					this.constraints.add(new Constraint(i1, i2).setPreferredDistance(distance(this.vertices.toArray(), i1, i2)));
 				}
 			}
 		}
