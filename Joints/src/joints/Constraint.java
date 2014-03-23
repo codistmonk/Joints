@@ -12,8 +12,6 @@ import static net.sourceforge.aprog.tools.Tools.cast;
 
 import java.io.Serializable;
 
-import net.sourceforge.aprog.tools.Tools;
-	
 /**
  * @author codistmonk (creation 2014-03-17)
  */
@@ -34,7 +32,7 @@ public final class Constraint implements Serializable, Comparable<Constraint> {
 	public Constraint(final int index1, final int index2) {
 		this.index1 = min(index1, index2);
 		this.index2 = max(index1, index2);
-		this.minimumDistance = Double.NEGATIVE_INFINITY;
+		this.minimumDistance = 0.0;
 		this.maximumDistance = Double.POSITIVE_INFINITY;
 		this.preferredDistance = Double.NaN;
 		this.strength = 1.0;
