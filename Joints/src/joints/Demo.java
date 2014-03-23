@@ -4,6 +4,7 @@ import static java.awt.Color.BLUE;
 import static java.awt.Color.GREEN;
 import static java.awt.Color.RED;
 import static java.awt.Color.YELLOW;
+import static java.lang.Math.max;
 import static java.lang.Math.round;
 import static java.util.Arrays.fill;
 import static joints.Constraint.distance;
@@ -145,6 +146,24 @@ public final class Demo {
 					drawGrid(canvas, orbiter);
 					stickMan.draw(transformedVertices.toArray(), canvas, ids, idUnderMouse, orbiter);
 					drawAxes(canvas, orbiter);
+				}
+				
+				{
+					final int n = vertices.size();
+					
+					for (int i = 3; i < n; i += 3) {
+						final double m = masses.get(i / 3);
+						
+						if (!Double.isInfinite(m)) {
+							final double oldZ = vertices.get(i + Z);
+							final double newZ = max(0.0, oldZ - 10.0);
+							
+							if (oldZ != newZ) {
+								orbiter.getUpdateNeeded().set(true);
+								vertices.set(i + Z, newZ);
+							}
+						}
+					}
 				}
 				
 				while (1.0 < stickMan.update()) {
