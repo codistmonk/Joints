@@ -5,6 +5,7 @@ import static java.awt.Color.GREEN;
 import static java.awt.Color.RED;
 import static java.awt.Color.YELLOW;
 import static java.lang.Math.max;
+import static java.lang.Math.random;
 import static java.lang.Math.round;
 import static java.util.Arrays.fill;
 import static joints.Constraint.distance;
@@ -19,6 +20,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.swing.ImageIcon;
@@ -166,7 +168,7 @@ public final class Demo {
 					}
 				}
 				
-				while (1.0 < stickMan.update()) {
+				while (10.0 < stickMan.update()) {
 					orbiter.getUpdateNeeded().set(true);
 				}
 				
@@ -259,6 +261,14 @@ public final class Demo {
 		
 		private final Collection<Constraint> constraints;
 		
+		private final List<Constraint> muscleConstraints;
+		
+		private int activeMuscleIndex;
+		
+		private double activeMuscleDelta;
+		
+		private double objective;
+		
 		private final int offset;
 		
 		private final int nextOffset;
@@ -273,6 +283,7 @@ public final class Demo {
 		
 		public StickMan(final DoubleList vertices, final DoubleList masses) {
 			this.constraints = new ArrayList<Constraint>();
+			this.muscleConstraints = new ArrayList<Constraint>();
 			this.offset = vertices.size();
 			/*
 			 *     |
@@ -404,9 +415,11 @@ public final class Demo {
 			}
 			
 			final Constraint result = new Constraint(i0 + path[0], i0 + path[n - 1])
-				.setMinimumDistance(maximumDistance / 2.0).setMaximumDistance(maximumDistance);
+				.setMinimumDistance(maximumDistance / 2.0).setMaximumDistance(maximumDistance)
+				.setClampedPreferredDistance(15.0 * maximumDistance / 16.0);
 			
 			this.constraints.add(result);
+			this.muscleConstraints.add(result);
 			
 			return result;
 		}
@@ -424,7 +437,25 @@ public final class Demo {
 		}
 		
 		public final double update() {
-			return Constraint.applyExplicit(this.constraints, this.vertices.toArray(), this.masses.toArray());
+			final double[] vertices = this.vertices.toArray();
+			
+			if (false) {
+				final double oldObjective = this.objective;
+				this.objective = vertices[this.offset + 8 * 3 + 2];
+				
+				if (this.objective <= oldObjective) {
+					this.activeMuscleIndex = (this.activeMuscleIndex + 1) % this.muscleConstraints.size();
+					this.activeMuscleDelta = (random() - 0.5) * 100.0;
+				}
+				
+				final Constraint activeMuscleConstraint = this.muscleConstraints.get(this.activeMuscleIndex);
+				
+				activeMuscleConstraint.setClampedPreferredDistance(activeMuscleConstraint.getPreferredDistance() + this.activeMuscleDelta);
+				
+				debugPrint(this.activeMuscleIndex, this.activeMuscleDelta, oldObjective, this.objective);
+			}
+			
+			return Constraint.applyExplicit(this.constraints, vertices, this.masses.toArray());
 		}
 		
 		public final StickMan draw(final double[] locations, final Canvas canvas, final Canvas ids, final AtomicInteger idUnderMouse, final OrbiterMouseHandler orbiter) {
