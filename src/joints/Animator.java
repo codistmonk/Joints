@@ -2,7 +2,7 @@ package joints;
 
 import static java.lang.Math.round;
 import static javax.swing.SwingUtilities.invokeAndWait;
-import static net.sourceforge.aprog.tools.Tools.gc;
+import static multij.tools.Tools.gc;
 
 import java.awt.Component;
 import java.io.Serializable;

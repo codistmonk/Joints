@@ -7,12 +7,12 @@ import static java.lang.Math.min;
 import static java.lang.Math.signum;
 import static java.lang.Math.sin;
 import static java.lang.Math.sqrt;
-import static net.sourceforge.aprog.tools.MathTools.Statistics.square;
-import static net.sourceforge.aprog.tools.Tools.cast;
+import static multij.tools.MathTools.square;
+import static multij.tools.Tools.cast;
 
 import java.io.Serializable;
 
-import net.sourceforge.aprog.tools.Tools;
+import multij.tools.Tools;
 
 /**
  * @author codistmonk (creation 2014-03-17)

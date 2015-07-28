@@ -9,8 +9,8 @@ import static java.lang.Math.random;
 import static java.lang.Math.round;
 import static java.util.Arrays.fill;
 import static joints.Constraint.distance;
-import static net.sourceforge.aprog.swing.SwingTools.show;
-import static net.sourceforge.aprog.tools.Tools.debugPrint;
+import static multij.swing.SwingTools.show;
+import static multij.tools.Tools.debugPrint;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -18,7 +18,6 @@ import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -26,8 +25,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 
-import net.sourceforge.aprog.tools.IllegalInstantiationException;
-import net.sourceforge.aprog.tools.Tools;
+import multij.primitivelists.DoubleList;
+import multij.swing.MouseHandler;
+import multij.tools.Canvas;
+import multij.tools.IllegalInstantiationException;
 
 /**
  * @author codistmonk (creation 2014-03-19)

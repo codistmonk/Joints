@@ -11,6 +11,8 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import multij.swing.MouseHandler;
+
 /**
  * @author codistmonk (creation 2014-03-13)
  */
