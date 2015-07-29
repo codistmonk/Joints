@@ -1,10 +1,6 @@
 package joints2;
 
-import static multij.tools.Tools.*;
-
 import java.awt.Color;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
 import java.awt.geom.Path2D;
 import java.util.ArrayList;
 import java.util.List;
@@ -12,7 +8,6 @@ import java.util.List;
 import javax.swing.SwingUtilities;
 import javax.vecmath.Point3f;
 
-import multij.swing.SwingTools;
 import multij.tools.IllegalInstantiationException;
 
 /**
@@ -33,7 +28,9 @@ public final class Demo {
 			
 			@Override
 			public final void run() {
-				final Scene scene = new Scene();
+				final Scene scene = new Scene().setClearColor(Color.WHITE);
+				
+				new Orbiter(scene.getUpdateNeeded(), scene.getCamera()).addTo(scene.getView());
 				
 				{
 					final List<Point3f> locationsIn = scene.getLocations().computeIfAbsent("shape", k -> new ArrayList<>());
@@ -45,20 +42,10 @@ public final class Demo {
 				}
 				
 				scene.getView().getRenderers().add(g -> {
-					g.setColor(Color.RED);
-					g.draw(scene.polygon("shape", new Path2D.Float()));
+					scene.draw(scene.polygon("shape", new Path2D.Float()), Color.RED, 1, g);
 				});
 				
-				new Orbiter(scene.getUpdateNeeded(), scene.getCamera()).addTo(scene.getView());
-				
-				SwingTools.show(scene.getView(), Demo.class.getName(), false).addWindowListener(new WindowAdapter() {
-					
-					@Override
-					public final void windowClosing(final WindowEvent event) {
-						scene.getTimer().stop();
-					}
-					
-				});
+				scene.getWindow(Demo.class.getName());
 			}
 			
 		});
