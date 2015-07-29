@@ -133,10 +133,8 @@ public final class Scene implements Serializable, Consumer<Graphics2D> {
 	
 	@Override
 	public final void accept(final Graphics2D g) {
-		g.setColor(this.getClearColor());
-		g.fill(new Rectangle(-1, -1, 2, 2));
-		
-		this.getIds().clear(Color.BLACK);
+		fill(g, this.getClearColor());
+		fill(this.getIds().getGraphics(), Color.BLACK);
 		
 		this.getCamera().getProjectionView(this.transform);
 		this.getLocations().values().forEach(l -> l.forEach(v -> this.transform.transform(
@@ -146,18 +144,22 @@ public final class Scene implements Serializable, Consumer<Graphics2D> {
 	public final Path2D polygon(final Object locationsKey, final Path2D result) {
 		final List<Point3f> locations = this.getLocations().get(locationsKey);
 		final int n = locations.size();
-		Point3f p = this.transformedLocations.get(locations.get(0));
+		Point3f p = this.getTransformed(locations.get(0));
 		
 		result.moveTo(p.x, p.y);
 		
 		for (int i = 1; i < n; ++i) {
-			p = this.transformedLocations.get(locations.get(i));
+			p = this.getTransformed(locations.get(i));
 			result.lineTo(p.x, p.y);
 		}
 		
 		result.closePath();
 		
 		return result;
+	}
+	
+	public final Point3f getTransformed(final Point3f location) {
+		return this.transformedLocations.get(location);
 	}
 	
 	public final void draw(final Shape shape, final Color color, final int id, final Graphics2D graphics) {
@@ -198,5 +200,12 @@ public final class Scene implements Serializable, Consumer<Graphics2D> {
 	}
 	
 	private static final long serialVersionUID = -855341394725808027L;
+	
+	private static final Rectangle VIEW = new Rectangle(-1, -1, 2, 2);
+	
+	private static final void fill(final Graphics2D graphics, final Color color) {
+		graphics.setColor(color);
+		graphics.fill(VIEW);
+	}
 	
 }
