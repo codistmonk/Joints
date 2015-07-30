@@ -11,6 +11,7 @@ import java.awt.event.ComponentEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.awt.geom.AffineTransform;
 import java.awt.geom.Path2D;
 import java.io.Serializable;
 import java.util.HashMap;
@@ -166,6 +167,10 @@ public final class Scene implements Serializable, Consumer<Graphics2D> {
 		graphics.setColor(color);
 		graphics.draw(shape);
 		
+		this.drawId(shape, id);
+	}
+	
+	public final void drawId(final Shape shape, final int id) {
 		if (0 <= id) {
 			this.getIds().getGraphics().setColor(new Color(id));
 			this.getIds().getGraphics().draw(shape);
@@ -176,6 +181,10 @@ public final class Scene implements Serializable, Consumer<Graphics2D> {
 		graphics.setColor(color);
 		graphics.fill(shape);
 		
+		this.fillId(shape, id);
+	}
+	
+	public final void fillId(final Shape shape, final int id) {
 		if (0 <= id) {
 			this.getIds().getGraphics().setColor(new Color(id));
 			this.getIds().getGraphics().fill(shape);
@@ -197,6 +206,15 @@ public final class Scene implements Serializable, Consumer<Graphics2D> {
 		}
 		
 		return this.window;
+	}
+	
+	public final AffineTransform getGraphicsTransform() {
+		return this.getView().getCanvas().getGraphics().getTransform();
+	}
+	
+	public final void setGraphicsTransform(final AffineTransform transform) {
+		this.getView().getCanvas().getGraphics().setTransform(transform);
+		this.getIds().getGraphics().setTransform(transform);
 	}
 	
 	private static final long serialVersionUID = -855341394725808027L;
