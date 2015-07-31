@@ -147,77 +147,29 @@ public final class JointsEditorPanel extends JPanel {
 			@Override
 			public final void keyPressed(final KeyEvent event) {
 				if (event.getKeyCode() == KeyEvent.VK_O && event.isControlDown()) {
-					final JFileChooser fileChooser = new JFileChooser();
-					
-					if (fileChooser.showOpenDialog(JointsEditorPanel.this) != JFileChooser.APPROVE_OPTION) {
-						return;
-					}
-					
-					try (final InputStream input = new FileInputStream(fileChooser.getSelectedFile())) {
-						final Document xml = XMLTools.parse(input);
-						final List<Point3f> newJointLocations = XMLTools.getNodes(xml, "//joint").stream().map(n -> new Point3f(
-								getFloat(n, "@x"), getFloat(n, "@y"), getFloat(n, "@z"))).collect(toList());
-						final List<Segment> newSegments = XMLTools.getNodes(xml, "//segment").stream().map(n -> new Segment(
-								getPoint1(n, newJointLocations), getPoint2(n, newJointLocations)).setConstraint(getConstraint(n))).collect(toList());
-						
-						getJointLocations().clear();
-						getSegments().clear();
-						
-						getSelection().clear();
-						getHighlighted()[0] = 0;
-						getJointLocations().addAll(newJointLocations);
-						getSegments().addAll(newSegments);
-						
-						scheduleUpdate();
-					} catch (final IOException exception) {
-						exception.printStackTrace();
-					}
+					open();
 				} else if (event.getKeyCode() == KeyEvent.VK_S && event.isControlDown()) {
-					final JFileChooser fileChooser = new JFileChooser();
-					
-					if (fileChooser.showSaveDialog(JointsEditorPanel.this) != JFileChooser.APPROVE_OPTION) {
-						return;
-					}
-					
-					final Document xml = XMLTools.parse("<model/>");
-					final Element root = xml.getDocumentElement();
-					
-					for (final Point3f p : getJointLocations()) {
-						final Element element = (Element) root.appendChild(xml.createElement("joint"));
-						
-						element.setAttribute("x", Float.toString(p.x));
-						element.setAttribute("y", Float.toString(p.y));
-						element.setAttribute("z", Float.toString(p.z));
-					}
-					
-					for (final Segment segment : getSegments()) {
-						final Element element = (Element) root.appendChild(xml.createElement("segment"));
-						
-						element.setAttribute("point1", Integer.toString(getJointLocations().indexOf(segment.getPoint1())));
-						element.setAttribute("point2", Integer.toString(getJointLocations().indexOf(segment.getPoint2())));
-						element.setAttribute("constraint", Double.toString(segment.getConstraint()));
-					}
-					
-					XMLTools.write(xml, fileChooser.getSelectedFile(), 0);
-				}
-				else if (event.getKeyCode() == KeyEvent.VK_D) {
+					save();
+				} else if (event.getKeyCode() == KeyEvent.VK_D) {
 					SwingTools.show(getScene().getIds().getImage(), "ids", false);
 				} else if (event.getKeyCode() == KeyEvent.VK_BACK_SPACE) {
-					// TODO delete selection
+					deleteSelection();
 				} else if (event.getKeyCode() == KeyEvent.VK_ENTER) {
 					final Integer[] selected = getSelection().toArray(new Integer[getSelection().size()]);
 					
 					if (selected.length == 2 && (selected[0] & 1) == 1 && (selected[1] & 1) == 1) {
-						getSegments().add(new Segment(getJointLocations().get(selected[0] >> 1), getJointLocations().get(selected[1] >> 1)));
+						getSegments().add(new Segment(point(selected[0]), point(selected[1])));
+						getSelection().clear();
+						getSelection().add(2 + 2 * (getSegments().size() - 1));
 						scheduleUpdate();
 					} else if (0 < selected.length && Arrays.stream(selected).allMatch(id -> (id & 1) == 0)) {
-						final double average = Arrays.stream(selected).map(id -> getSegments().get((id - 2) >> 1)).mapToDouble(Segment::getConstraint).average().getAsDouble();
+						final double average = Arrays.stream(selected).map(JointsEditorPanel.this::segment).mapToDouble(Segment::getConstraint).average().getAsDouble();
 						final String newConstraintAsString = JOptionPane.showInputDialog("constraint:", average);
 						
 						if (newConstraintAsString != null) {
 							final double newConstraint = Double.parseDouble(newConstraintAsString);
 							
-							Arrays.stream(selected).forEach(id -> getSegments().get((id - 2) >> 1).setConstraint(newConstraint));
+							Arrays.stream(selected).forEach(id -> segment(id).setConstraint(newConstraint));
 							
 							scheduleUpdate();
 						}
@@ -267,6 +219,88 @@ public final class JointsEditorPanel extends JPanel {
 	
 	public final Collection<Integer> getSelection() {
 		return this.selection;
+	}
+
+	public final void open() {
+		final JFileChooser fileChooser = new JFileChooser();
+		
+		if (fileChooser.showOpenDialog(JointsEditorPanel.this) != JFileChooser.APPROVE_OPTION) {
+			return;
+		}
+		
+		try (final InputStream input = new FileInputStream(fileChooser.getSelectedFile())) {
+			final Document xml = XMLTools.parse(input);
+			final List<Point3f> newJointLocations = XMLTools.getNodes(xml, "//joint").stream().map(n -> new Point3f(
+					getFloat(n, "@x"), getFloat(n, "@y"), getFloat(n, "@z"))).collect(toList());
+			final List<Segment> newSegments = XMLTools.getNodes(xml, "//segment").stream().map(n -> new Segment(
+					getPoint1(n, newJointLocations), getPoint2(n, newJointLocations)).setConstraint(getConstraint(n))).collect(toList());
+			
+			getJointLocations().clear();
+			getSegments().clear();
+			
+			getSelection().clear();
+			getHighlighted()[0] = 0;
+			getJointLocations().addAll(newJointLocations);
+			getSegments().addAll(newSegments);
+			
+			scheduleUpdate();
+		} catch (final IOException exception) {
+			exception.printStackTrace();
+		}
+	}
+	
+	public final void save() {
+		final JFileChooser fileChooser = new JFileChooser();
+		
+		if (fileChooser.showSaveDialog(JointsEditorPanel.this) != JFileChooser.APPROVE_OPTION) {
+			return;
+		}
+		
+		final Document xml = XMLTools.parse("<model/>");
+		final Element root = xml.getDocumentElement();
+		
+		for (final Point3f p : getJointLocations()) {
+			final Element element = (Element) root.appendChild(xml.createElement("joint"));
+			
+			element.setAttribute("x", Float.toString(p.x));
+			element.setAttribute("y", Float.toString(p.y));
+			element.setAttribute("z", Float.toString(p.z));
+		}
+		
+		for (final Segment segment : getSegments()) {
+			final Element element = (Element) root.appendChild(xml.createElement("segment"));
+			
+			element.setAttribute("point1", Integer.toString(getJointLocations().indexOf(segment.getPoint1())));
+			element.setAttribute("point2", Integer.toString(getJointLocations().indexOf(segment.getPoint2())));
+			element.setAttribute("constraint", Double.toString(segment.getConstraint()));
+		}
+		
+		XMLTools.write(xml, fileChooser.getSelectedFile(), 0);
+	}
+	
+	public final void deleteSelection() {
+		if (!getSelection().isEmpty()) {
+			final Integer[] selected = getSelection().toArray(new Integer[getSelection().size()]);
+			final List<Point3f> pointsToRemove = new ArrayList<>();
+			final List<Segment> segmentsToRemove = new ArrayList<>();
+			
+			for (final int id : selected) {
+				if (isSegment(id)) {
+					segmentsToRemove.add(segment(id));
+				} else {
+					final Point3f point = point(id);
+					
+					pointsToRemove.add(point);
+					segmentsToRemove.addAll(getSegments().stream().filter(s -> s.isEndPoint(point)).collect(toList()));
+				}
+			}
+			
+			getSelection().clear();
+			getJointLocations().removeAll(pointsToRemove);
+			getSegments().removeAll(segmentsToRemove);
+			
+			scheduleUpdate();
+		}
 	}
 	
 	final void renderSegments(final Graphics2D g) {
@@ -323,6 +357,14 @@ public final class JointsEditorPanel extends JPanel {
 	
 	final void scheduleUpdate() {
 		getScene().getUpdateNeeded().set(true);
+	}
+	
+	final Point3f point(final int id) {
+		return this.getJointLocations().get(jointIndex(id));
+	}
+	
+	final Segment segment(final int id) {
+		return this.getSegments().get(segmentIndex(id));
 	}
 	
 	private static final long serialVersionUID = 6374986295888991754L;
@@ -408,6 +450,22 @@ public final class JointsEditorPanel extends JPanel {
 		return parseDouble(getString(segmentNode, "@constraint"));
 	}
 	
+	static final boolean isJoint(final int id) {
+		return (id & 1) == 1;
+	}
+	
+	static final boolean isSegment(final int id) {
+		return (id & 1) == 0;
+	}
+	
+	static final int jointIndex(final int id) {
+		return id >> 1;
+	}
+	
+	static final int segmentIndex(final int id) {
+		return (id - 2) >> 1;
+	}
+	
 	/**
 	 * @author codistmonk (creation 2015-07-30)
 	 */
@@ -442,6 +500,10 @@ public final class JointsEditorPanel extends JPanel {
 		
 		public final Point3f getPoint2() {
 			return this.point2;
+		}
+		
+		public final boolean isEndPoint(final Point3f point) {
+			return point == this.getPoint1() || point == this.getPoint2();
 		}
 		
 		private static final long serialVersionUID = 2645415714139697519L;
