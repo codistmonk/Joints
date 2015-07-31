@@ -19,6 +19,7 @@ import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -224,43 +225,59 @@ public final class JointsEditorPanel extends JPanel {
 	public final void open() {
 		final JFileChooser fileChooser = new JFileChooser();
 		
-		if (fileChooser.showOpenDialog(JointsEditorPanel.this) != JFileChooser.APPROVE_OPTION) {
-			return;
+		if (fileChooser.showOpenDialog(JointsEditorPanel.this) == JFileChooser.APPROVE_OPTION) {
+			this.open(fileChooser.getSelectedFile());
 		}
 		
-		try (final InputStream input = new FileInputStream(fileChooser.getSelectedFile())) {
-			final Document xml = XMLTools.parse(input);
-			final List<Point3f> newJointLocations = XMLTools.getNodes(xml, "//joint").stream().map(n -> new Point3f(
-					getFloat(n, "@x"), getFloat(n, "@y"), getFloat(n, "@z"))).collect(toList());
-			final List<Segment> newSegments = XMLTools.getNodes(xml, "//segment").stream().map(n -> new Segment(
-					getPoint1(n, newJointLocations), getPoint2(n, newJointLocations)).setConstraint(getConstraint(n))).collect(toList());
-			
-			getJointLocations().clear();
-			getSegments().clear();
-			
-			getSelection().clear();
-			getHighlighted()[0] = 0;
-			getJointLocations().addAll(newJointLocations);
-			getSegments().addAll(newSegments);
-			
-			scheduleUpdate();
+	}
+	
+	public final JointsEditorPanel open(final File file) {
+		try (final InputStream input = new FileInputStream(file)) {
+			this.fromXML(XMLTools.parse(input));
 		} catch (final IOException exception) {
 			exception.printStackTrace();
 		}
+		
+		return this;
 	}
 	
 	public final void save() {
 		final JFileChooser fileChooser = new JFileChooser();
 		
-		if (fileChooser.showSaveDialog(JointsEditorPanel.this) != JFileChooser.APPROVE_OPTION) {
-			return;
+		if (fileChooser.showSaveDialog(JointsEditorPanel.this) == JFileChooser.APPROVE_OPTION) {
+			this.save(fileChooser.getSelectedFile());
 		}
+	}
+	
+	public final JointsEditorPanel save(final File file) {
+		XMLTools.write(this.toXML(), file, 0);
 		
-		final Document xml = XMLTools.parse("<model/>");
-		final Element root = xml.getDocumentElement();
+		return this;
+	}
+	
+	public final void fromXML(final Document xml) {
+		final List<Point3f> newJointLocations = XMLTools.getNodes(xml, "//joint").stream().map(n -> new Point3f(
+				getFloat(n, "@x"), getFloat(n, "@y"), getFloat(n, "@z"))).collect(toList());
+		final List<Segment> newSegments = XMLTools.getNodes(xml, "//segment").stream().map(n -> new Segment(
+				getPoint1(n, newJointLocations), getPoint2(n, newJointLocations)).setConstraint(getConstraint(n))).collect(toList());
+		
+		getJointLocations().clear();
+		getSegments().clear();
+		
+		getSelection().clear();
+		getHighlighted()[0] = 0;
+		getJointLocations().addAll(newJointLocations);
+		getSegments().addAll(newSegments);
+		
+		scheduleUpdate();
+	}
+	
+	public final Document toXML() {
+		final Document result = XMLTools.parse("<model/>");
+		final Element root = result.getDocumentElement();
 		
 		for (final Point3f p : getJointLocations()) {
-			final Element element = (Element) root.appendChild(xml.createElement("joint"));
+			final Element element = (Element) root.appendChild(result.createElement("joint"));
 			
 			element.setAttribute("x", Float.toString(p.x));
 			element.setAttribute("y", Float.toString(p.y));
@@ -268,14 +285,14 @@ public final class JointsEditorPanel extends JPanel {
 		}
 		
 		for (final Segment segment : getSegments()) {
-			final Element element = (Element) root.appendChild(xml.createElement("segment"));
+			final Element element = (Element) root.appendChild(result.createElement("segment"));
 			
 			element.setAttribute("point1", Integer.toString(getJointLocations().indexOf(segment.getPoint1())));
 			element.setAttribute("point2", Integer.toString(getJointLocations().indexOf(segment.getPoint2())));
 			element.setAttribute("constraint", Double.toString(segment.getConstraint()));
 		}
 		
-		XMLTools.write(xml, fileChooser.getSelectedFile(), 0);
+		return result;
 	}
 	
 	public final void deleteSelection() {
