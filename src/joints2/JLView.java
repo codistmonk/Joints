@@ -41,11 +41,12 @@ public final class JLView extends JComponent implements JL {
 				
 				if (0 < w && 0 < h) {
 					final Graphics2D g = getCanvas().setFormat(w, h).getGraphics();
+					final int m = max(w, h);
 					
 					g.setTransform(new AffineTransform());
 					g.translate(w / 2.0, h / 2.0);
-					g.scale(w / 2.0, -h / 2.0);
-					g.setStroke(new BasicStroke(2F / max(w, h)));
+					g.scale(m / 2.0, -m / 2.0);
+					g.setStroke(new BasicStroke(2F / m));
 				}
 			}
 			
