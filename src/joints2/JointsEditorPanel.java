@@ -8,6 +8,7 @@ import static multij.xml.XMLTools.getString;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.awt.Shape;
 import java.awt.event.HierarchyEvent;
 import java.awt.event.HierarchyListener;
@@ -16,6 +17,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.Ellipse2D;
+import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
@@ -44,6 +46,7 @@ import org.w3c.dom.Node;
 
 import multij.swing.MouseHandler;
 import multij.swing.SwingTools;
+import multij.tools.Tools;
 import multij.xml.XMLTools;
 
 /**
@@ -61,6 +64,8 @@ public final class JointsEditorPanel extends JPanel {
 	
 	private final Collection<Integer> selection;
 	
+	private final Orbiter orbiter;
+	
 	public JointsEditorPanel() {
 		super(new BorderLayout());
 		this.scene = new Scene().setClearColor(Color.WHITE);
@@ -68,8 +73,7 @@ public final class JointsEditorPanel extends JPanel {
 		this.segments = new ArrayList<>();
 		this.highlighted = new int[1];
 		this.selection = new HashSet<>();
-		
-		new Orbiter(this.getScene().getUpdateNeeded(), this.getScene().getCamera()).addTo(this.getScene().getView());
+		this.orbiter = new Orbiter(this.getScene().getUpdateNeeded(), this.getScene().getCamera()).addTo(this.getScene().getView());
 		
 		this.addHierarchyListener(new HierarchyListener() {
 			
@@ -89,6 +93,56 @@ public final class JointsEditorPanel extends JPanel {
 		
 		new MouseHandler() {
 			
+			private final Point mouse = new Point();
+			
+			@Override
+			public final void mouseDragged(final MouseEvent event) {
+				{
+					final List<Point3f> activePoints = new ArrayList<>();
+					
+					for (final int id : getSelection()) {
+						if (isJoint(id)) {
+							activePoints.add(point(id));
+						} else {
+							final Segment segment = segment(id);
+							activePoints.add(segment.getPoint1());
+							activePoints.add(segment.getPoint2());
+						}
+					}
+					
+					if (!activePoints.isEmpty()) {
+						final AffineTransform graphicsTransform = getScene().getGraphicsTransform();
+						final Point2D previousMouse = new Point2D.Double(this.mouse.x, this.mouse.y);
+						final Point2D currentMouse = new Point2D.Double(event.getX(), event.getY());
+						
+						try {
+							graphicsTransform.inverseTransform(previousMouse, previousMouse);
+							graphicsTransform.inverseTransform(currentMouse, currentMouse);
+							
+							final Matrix4f m = getScene().getCamera().getProjectionView(new Matrix4f());
+							
+							m.invert();
+							
+							final Point3f previousLocation = point3f(previousMouse);
+							final Point3f currentLocation = point3f(currentMouse);
+							
+							m.transform(previousLocation);
+							m.transform(currentLocation);
+							
+							currentLocation.sub(previousLocation);
+							
+							activePoints.forEach(p -> p.add(currentLocation));
+							
+							scheduleUpdate();
+						} catch (final NoninvertibleTransformException exception) {
+							exception.printStackTrace();
+						}
+					}
+				}
+				
+				this.mouse.setLocation(event.getX(), event.getY());
+			}
+			
 			@Override
 			public final void mouseMoved(final MouseEvent event) {
 				final int idUnderMouse = getScene().getIdUnderMouse();
@@ -100,14 +154,16 @@ public final class JointsEditorPanel extends JPanel {
 			}
 			
 			@Override
-			public final void mouseClicked(final MouseEvent event) {
+			public final void mousePressed(final MouseEvent event) {
+				this.mouse.setLocation(event.getX(), event.getY());
+				
 				if (event.isPopupTrigger()) {
 					return;
 				}
 				
 				final int id = getHighlighted()[0];
 				
-				if (event.getClickCount() == 1 && id != 0) {
+				if (id != 0) {
 					if (event.isShiftDown()) {
 						if (!getSelection().add(id)) {
 							getSelection().remove(id);
@@ -117,8 +173,23 @@ public final class JointsEditorPanel extends JPanel {
 						getSelection().add(id);
 					}
 					
+					getScene().getView().removeMouseMotionListener(getOrbiter());
+					
 					scheduleUpdate();
-				} else if (event.getClickCount() == 2 && id == 0) {
+				} else if (!Arrays.asList(getScene().getView().getMouseMotionListeners()).contains(getOrbiter())) {
+					getScene().getView().addMouseMotionListener(getOrbiter());
+				}
+			}
+			
+			@Override
+			public final void mouseClicked(final MouseEvent event) {
+				if (event.isPopupTrigger()) {
+					return;
+				}
+				
+				final int id = getHighlighted()[0];
+				
+				if (event.getClickCount() == 2 && id == 0) {
 					final Matrix4f m = new Matrix4f();
 					
 					getScene().getCamera().getProjectionView(m);
@@ -221,7 +292,11 @@ public final class JointsEditorPanel extends JPanel {
 	public final Collection<Integer> getSelection() {
 		return this.selection;
 	}
-
+	
+	public final Orbiter getOrbiter() {
+		return this.orbiter;
+	}
+	
 	public final void open() {
 		final JFileChooser fileChooser = new JFileChooser();
 		
@@ -419,6 +494,18 @@ public final class JointsEditorPanel extends JPanel {
 		}
 	}
 	
+	public static final Point3f point3f(final Point2D p) {
+		return point3f(p, new Point3f());
+	}
+	
+	public static final Point3f point3f(final Point2D p, final Point3f result) {
+		result.x = (float) p.getX();
+		result.y = (float) p.getY();
+		result.z = 0F;
+		
+		return result;
+	}
+	
 	public static final Point2D point2D(final Point3f p) {
 		return point2D(p, new Point2D.Double());
 	}
@@ -434,7 +521,7 @@ public final class JointsEditorPanel extends JPanel {
 	}
 	
 	public static final Point3f middle(final Point3f p1, final Point3f p2, final Point3f result) {
-		result.set(middle(p1.x, p2.x), middle(p1.y, p2.y), middle(p1.y, p2.y));
+		result.set(middle(p1.x, p2.x), middle(p1.y, p2.y), middle(p1.z, p2.z));
 		
 		return result;
 	}
