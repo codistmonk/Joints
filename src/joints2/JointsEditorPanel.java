@@ -46,7 +46,6 @@ import org.w3c.dom.Node;
 
 import multij.swing.MouseHandler;
 import multij.swing.SwingTools;
-import multij.tools.Tools;
 import multij.xml.XMLTools;
 
 /**
@@ -95,20 +94,12 @@ public final class JointsEditorPanel extends JPanel {
 			
 			private final Point mouse = new Point();
 			
+			private boolean moving = false;
+			
 			@Override
 			public final void mouseDragged(final MouseEvent event) {
-				{
-					final List<Point3f> activePoints = new ArrayList<>();
-					
-					for (final int id : getSelection()) {
-						if (isJoint(id)) {
-							activePoints.add(point(id));
-						} else {
-							final Segment segment = segment(id);
-							activePoints.add(segment.getPoint1());
-							activePoints.add(segment.getPoint2());
-						}
-					}
+				if (this.moving) {
+					final List<Point3f> activePoints = collectPointsFromSelection();
 					
 					if (!activePoints.isEmpty()) {
 						final AffineTransform graphicsTransform = getScene().getGraphicsTransform();
@@ -173,10 +164,12 @@ public final class JointsEditorPanel extends JPanel {
 						getSelection().add(id);
 					}
 					
+					this.moving = true;
 					getScene().getView().removeMouseMotionListener(getOrbiter());
 					
 					scheduleUpdate();
 				} else if (!Arrays.asList(getScene().getView().getMouseMotionListeners()).contains(getOrbiter())) {
+					this.moving = false;
 					getScene().getView().addMouseMotionListener(getOrbiter());
 				}
 			}
@@ -218,7 +211,18 @@ public final class JointsEditorPanel extends JPanel {
 			
 			@Override
 			public final void keyPressed(final KeyEvent event) {
-				if (event.getKeyCode() == KeyEvent.VK_O && event.isControlDown()) {
+				if (event.getKeyCode() == KeyEvent.VK_SPACE) {
+					final Point3f center = new Point3f();
+					final List<Point3f> points = collectPointsFromSelection();
+					
+					if (!points.isEmpty()) {
+						points.forEach(center::add);
+						center.scale(1F / points.size());
+						
+						getOrbiter().getTarget().set(center);
+						getOrbiter().updateCamera();
+					}
+				} if (event.getKeyCode() == KeyEvent.VK_O && event.isControlDown()) {
 					open();
 				} else if (event.getKeyCode() == KeyEvent.VK_S && event.isControlDown()) {
 					save();
@@ -459,6 +463,23 @@ public final class JointsEditorPanel extends JPanel {
 		return this.getSegments().get(segmentIndex(id));
 	}
 	
+	final List<Point3f> collectPointsFromSelection() {
+		final List<Point3f> result = new ArrayList<>();
+		
+		for (final int id : getSelection()) {
+			if (isJoint(id)) {
+				result.add(point(id));
+			} else {
+				final Segment segment = segment(id);
+				
+				result.add(segment.getPoint1());
+				result.add(segment.getPoint2());
+			}
+		}
+		
+		return result;
+	}
+
 	private static final long serialVersionUID = 6374986295888991754L;
 	
 	public static final void applyConstraints(final List<JointsEditorPanel.Segment> segments, final AtomicBoolean updateNeeded) {
