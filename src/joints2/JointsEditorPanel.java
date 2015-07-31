@@ -1,6 +1,5 @@
 package joints2;
 
-import static java.lang.Math.random;
 import static java.util.stream.Collectors.toList;
 import static multij.xml.XMLTools.getNumber;
 import static multij.xml.XMLTools.getString;
@@ -25,13 +24,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
@@ -40,8 +37,8 @@ import javax.swing.SwingUtilities;
 import javax.vecmath.Matrix4f;
 import javax.vecmath.Point3f;
 
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
+import joints2.JointsModel.Segment;
+
 import org.w3c.dom.Node;
 
 import multij.swing.MouseHandler;
@@ -55,9 +52,7 @@ public final class JointsEditorPanel extends JPanel {
 	
 	private final Scene scene;
 	
-	private final List<Point3f> jointLocations;
-	
-	private final List<Segment> segments;
+	private final JointsModel model;
 	
 	private final int[] highlighted;
 	
@@ -68,8 +63,7 @@ public final class JointsEditorPanel extends JPanel {
 	public JointsEditorPanel() {
 		super(new BorderLayout());
 		this.scene = new Scene().setClearColor(Color.WHITE);
-		this.jointLocations = this.getScene().getLocations().computeIfAbsent("joints", k -> new ArrayList<>());
-		this.segments = new ArrayList<>();
+		this.model = new JointsModel(this.getScene(), "joints");
 		this.highlighted = new int[1];
 		this.selection = new HashSet<>();
 		this.orbiter = new Orbiter(this.getScene().getUpdateNeeded(), this.getScene().getCamera()).addTo(this.getScene().getView());
@@ -258,7 +252,7 @@ public final class JointsEditorPanel extends JPanel {
 		getScene().getView().setFocusable(true);
 		
 		getScene().getView().getRenderers().add(g -> {
-			applyConstraints(getSegments(), getScene().getUpdateNeeded());
+			getModel().applyConstraints(getScene().getUpdateNeeded());
 		});
 		
 		{
@@ -281,12 +275,16 @@ public final class JointsEditorPanel extends JPanel {
 		return this.scene;
 	}
 	
-	public final List<Point3f> getJointLocations() {
-		return this.jointLocations;
+	public final JointsModel getModel() {
+		return this.model;
 	}
 	
-	public final List<JointsEditorPanel.Segment> getSegments() {
-		return this.segments;
+	public final List<Point3f> getJointLocations() {
+		return this.getModel().getJointLocations();
+	}
+	
+	public final List<Segment> getSegments() {
+		return this.getModel().getSegments();
 	}
 	
 	public final int[] getHighlighted() {
@@ -312,7 +310,10 @@ public final class JointsEditorPanel extends JPanel {
 	
 	public final JointsEditorPanel open(final File file) {
 		try (final InputStream input = new FileInputStream(file)) {
-			this.fromXML(XMLTools.parse(input));
+			this.getModel().fromXML(XMLTools.parse(input));
+			getSelection().clear();
+			getHighlighted()[0] = 0;
+			scheduleUpdate();
 		} catch (final IOException exception) {
 			exception.printStackTrace();
 		}
@@ -329,49 +330,9 @@ public final class JointsEditorPanel extends JPanel {
 	}
 	
 	public final JointsEditorPanel save(final File file) {
-		XMLTools.write(this.toXML(), file, 0);
+		XMLTools.write(this.getModel().toXML(), file, 0);
 		
 		return this;
-	}
-	
-	public final void fromXML(final Document xml) {
-		final List<Point3f> newJointLocations = XMLTools.getNodes(xml, "//joint").stream().map(n -> new Point3f(
-				getFloat(n, "@x"), getFloat(n, "@y"), getFloat(n, "@z"))).collect(toList());
-		final List<Segment> newSegments = XMLTools.getNodes(xml, "//segment").stream().map(n -> new Segment(
-				getPoint1(n, newJointLocations), getPoint2(n, newJointLocations)).setConstraint(getConstraint(n))).collect(toList());
-		
-		getJointLocations().clear();
-		getSegments().clear();
-		
-		getSelection().clear();
-		getHighlighted()[0] = 0;
-		getJointLocations().addAll(newJointLocations);
-		getSegments().addAll(newSegments);
-		
-		scheduleUpdate();
-	}
-	
-	public final Document toXML() {
-		final Document result = XMLTools.parse("<model/>");
-		final Element root = result.getDocumentElement();
-		
-		for (final Point3f p : getJointLocations()) {
-			final Element element = (Element) root.appendChild(result.createElement("joint"));
-			
-			element.setAttribute("x", Float.toString(p.x));
-			element.setAttribute("y", Float.toString(p.y));
-			element.setAttribute("z", Float.toString(p.z));
-		}
-		
-		for (final Segment segment : getSegments()) {
-			final Element element = (Element) root.appendChild(result.createElement("segment"));
-			
-			element.setAttribute("point1", Integer.toString(getJointLocations().indexOf(segment.getPoint1())));
-			element.setAttribute("point2", Integer.toString(getJointLocations().indexOf(segment.getPoint2())));
-			element.setAttribute("constraint", Double.toString(segment.getConstraint()));
-		}
-		
-		return result;
 	}
 	
 	public final void deleteSelection() {
@@ -404,7 +365,7 @@ public final class JointsEditorPanel extends JPanel {
 		
 		for (int i = 0; i < n; ++i) {
 			final int id = 2 * i + 2;
-			final JointsEditorPanel.Segment segment = getSegments().get(i);
+			final Segment segment = getSegments().get(i);
 			final Path2D shape = new Path2D.Double();
 			final Point3f p1 = getScene().getTransformed(segment.getPoint1());
 			final Point3f p2 = getScene().getTransformed(segment.getPoint2());
@@ -482,39 +443,6 @@ public final class JointsEditorPanel extends JPanel {
 
 	private static final long serialVersionUID = 6374986295888991754L;
 	
-	public static final void applyConstraints(final List<JointsEditorPanel.Segment> segments, final AtomicBoolean updateNeeded) {
-		for (final JointsEditorPanel.Segment segment : segments) {
-			final Point3f point1 = segment.getPoint1();
-			final Point3f point2 = segment.getPoint2();
-			final double constraint = segment.getConstraint();
-			double distance = point1.distance(point2);
-			
-			if (distance != constraint) {
-				final Point3f middle = middle(point1, point2);
-				
-				if (distance == 0.0) {
-					final Point3f delta = new Point3f((float) (random() - 0.5), (float) (random() - 0.5), (float) (random() - 0.5));
-					point1.add(delta);
-					point2.sub(delta);
-					
-					distance = point1.distance(point2);
-				}
-				
-				if (distance != 0.0) {
-					final float k = (float) ((constraint + distance) / 2.0 / distance);
-					
-					middle.scale(1F - k);
-					point1.scale(k);
-					point1.add(middle);
-					point2.scale(k);
-					point2.add(middle);
-				}
-				
-				updateNeeded.set(true);
-			}
-		}
-	}
-	
 	public static final Point3f point3f(final Point2D p) {
 		return point3f(p, new Point3f());
 	}
@@ -589,50 +517,6 @@ public final class JointsEditorPanel extends JPanel {
 	
 	static final int segmentIndex(final int id) {
 		return (id - 2) >> 1;
-	}
-	
-	/**
-	 * @author codistmonk (creation 2015-07-30)
-	 */
-	public static final class Segment implements Serializable {
-		
-		private final Point3f point1;
-		
-		private final Point3f point2;
-		
-		private double constraint;
-		
-		public Segment(final Point3f point1, final Point3f point2) {
-			this.point1 = point1;
-			this.point2 = point2;
-			
-			this.setConstraint(point1.distance(point2));
-		}
-		
-		public final double getConstraint() {
-			return this.constraint;
-		}
-		
-		public final JointsEditorPanel.Segment setConstraint(final double constraint) {
-			this.constraint = constraint;
-			
-			return this;
-		}
-		
-		public final Point3f getPoint1() {
-			return this.point1;
-		}
-		
-		public final Point3f getPoint2() {
-			return this.point2;
-		}
-		
-		public final boolean isEndPoint(final Point3f point) {
-			return point == this.getPoint1() || point == this.getPoint2();
-		}
-		
-		private static final long serialVersionUID = 2645415714139697519L;
-		
 	}
 	
 }
