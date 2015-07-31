@@ -414,14 +414,14 @@ public final class JointsEditorPanel extends JPanel {
 			
 			getScene().draw(shape, id == getHighlighted()[0] ? Color.YELLOW : getSelection().contains(id) ? Color.RED : Color.BLUE, id, g);
 			
-			{
+			if (false) {
 				final Point2D p2D = point2D(middle(p1, p2));
 				final AffineTransform transform = getScene().getGraphicsTransform();
 				
 				transform.transform(p2D, p2D);
 				getScene().setGraphicsTransform(new AffineTransform());
 				
-				final String string = String.format("%.3f", segment.getPoint1().distance(segment.getPoint2())) + "/" + String.format("%.3f", segment.getConstraint());
+				final String string = String.format("%.1f", segment.getPoint1().distance(segment.getPoint2())) + "/" + String.format("%.1f", segment.getConstraint());
 				final Rectangle2D stringBounds = g.getFontMetrics().getStringBounds(string, g);
 				
 				final float left = (float) (p2D.getX() - stringBounds.getWidth() / 2.0);
@@ -444,7 +444,7 @@ public final class JointsEditorPanel extends JPanel {
 		for (int i = 0; i < n; ++i) {
 			final int id = 2 * i + 1;
 			final Point3f p = getScene().getTransformed(getJointLocations().get(i));
-			final double r = 0.05;
+			final double r = 0.02;
 			final Shape shape = new Ellipse2D.Double(p.x - r, p.y - r, 2.0 * r, 2.0 * r);
 			
 			getScene().fill(shape, id == getHighlighted()[0] ? Color.YELLOW : getSelection().contains(id) ? Color.RED : Color.BLUE, id, g);

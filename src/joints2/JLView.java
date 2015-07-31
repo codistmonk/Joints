@@ -45,13 +45,13 @@ public final class JLView extends JComponent implements JL {
 					g.setTransform(new AffineTransform());
 					g.translate(w / 2.0, h / 2.0);
 					g.scale(w / 2.0, -h / 2.0);
-					g.setStroke(new BasicStroke(1F / max(w, h)));
+					g.setStroke(new BasicStroke(2F / max(w, h)));
 				}
 			}
 			
 		});
 		
-		this.setPreferredSize(new Dimension(640, 480));
+		this.setPreferredSize(new Dimension(512, 512));
 	}
 	
 	public final Canvas getCanvas() {
