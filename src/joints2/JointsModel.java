@@ -5,7 +5,9 @@ import static java.util.stream.Collectors.toList;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.vecmath.Point3f;
@@ -24,11 +26,14 @@ public final class JointsModel implements Serializable {
 	
 	private final List<Point3f> jointLocations;
 	
+	private final Map<Point3f, Point3f> previousJointLocations;
+	
 	private final List<JointsModel.Segment> segments;
 	
 	public JointsModel(final Scene scene, final String name) {
 		this.name = name;
 		this.jointLocations = scene.getLocations().computeIfAbsent(name, k -> new ArrayList<>());
+		this.previousJointLocations = new IdentityHashMap<>();
 		this.segments = new ArrayList<>();
 	}
 	
@@ -81,6 +86,19 @@ public final class JointsModel implements Serializable {
 	}
 	
 	public final void applyConstraints(final AtomicBoolean updateNeeded) {
+		final float momentum = 0.4F;
+		final float rigidity = 0.9F;
+		
+		for (final Point3f point : this.getJointLocations()) {
+			final Point3f previous = this.previousJointLocations.computeIfAbsent(point, p -> new Point3f(p));
+			
+			point.x += (point.x - previous.x) * momentum;
+			point.y += (point.y - previous.y) * momentum;
+			point.z += (point.z - previous.z) * momentum;
+			
+			previous.set(point);
+		}
+		
 		for (final JointsModel.Segment segment : this.getSegments()) {
 			final Point3f point1 = segment.getPoint1();
 			final Point3f point2 = segment.getPoint2();
@@ -99,7 +117,6 @@ public final class JointsModel implements Serializable {
 				}
 				
 				if (distance != 0.0) {
-					final float rigidity = 0.8F;
 					final float k = (float) (lerp(distance, rigidity, constraint) / distance);
 					
 					middle.scale(1F - k);
@@ -116,8 +133,8 @@ public final class JointsModel implements Serializable {
 	
 	private static final long serialVersionUID = -7402680801009890782L;
 	
-	public static final double lerp(final double a, final float t, final double b) {
-		return a * (1F - t) + b * t;
+	public static final double lerp(final double a, final double t, final double b) {
+		return a * (1.0 - t) + b * t;
 	}
 	
 	/**
