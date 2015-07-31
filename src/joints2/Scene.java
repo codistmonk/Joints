@@ -191,18 +191,32 @@ public final class Scene implements Serializable, Consumer<Graphics2D> {
 		}
 	}
 	
-	public final Window getWindow(final String title) {
-		if (this.window == null) {
-			this.window = SwingTools.show(this.getView(), title, false);
-			
-			this.window.addWindowListener(new WindowAdapter() {
+	public final Scene setWindow(final Window window) {
+		this.window = window;
+		
+		if (window != null) {
+			window.addWindowListener(new WindowAdapter() {
 				
 				@Override
 				public final void windowClosing(final WindowEvent event) {
-					getTimer().stop();
+					final Window sceneWindow = getWindow(null);
+					
+					if (window == sceneWindow) {
+						getTimer().stop();
+					} else if (sceneWindow == null) {
+						window.removeWindowListener(this);
+					}
 				}
 				
 			});
+		}
+		
+		return this;
+	}
+	
+	public final Window getWindow(final String title) {
+		if (this.window == null) {
+			this.setWindow(SwingTools.show(this.getView(), title, false));
 		}
 		
 		return this.window;
