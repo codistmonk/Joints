@@ -1,9 +1,15 @@
 package joints2;
 
+import static java.lang.Float.parseFloat;
+import static java.lang.Math.max;
 import static java.util.stream.Collectors.toList;
+import static multij.swing.SwingTools.horizontalSplit;
+import static multij.swing.SwingTools.scrollable;
+import static multij.tools.Tools.*;
 import static multij.xml.XMLTools.getNumber;
 import static multij.xml.XMLTools.getString;
 
+import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -33,22 +39,32 @@ import java.util.List;
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.RowFilter;
 import javax.swing.SwingUtilities;
+import javax.swing.event.TableModelEvent;
+import javax.swing.event.TableModelListener;
+import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableModel;
+import javax.swing.table.TableRowSorter;
 import javax.vecmath.Matrix4f;
 import javax.vecmath.Point3f;
 
 import joints2.JointsModel.Segment;
 
-import org.w3c.dom.Node;
-
 import multij.swing.MouseHandler;
 import multij.swing.SwingTools;
 import multij.xml.XMLTools;
+
+import org.w3c.dom.Node;
 
 /**
  * @author codistmonk (creation 2015-07-31)
  */
 public final class JointsEditorPanel extends JPanel {
+	
+	private final ControlPanel controlPanel;
 	
 	private final Scene scene;
 	
@@ -62,6 +78,7 @@ public final class JointsEditorPanel extends JPanel {
 	
 	public JointsEditorPanel() {
 		super(new BorderLayout());
+		this.controlPanel = new ControlPanel();
 		this.scene = new Scene().setClearColor(Color.WHITE);
 		this.model = new JointsModel(this.getScene(), "joints");
 		this.highlighted = new int[1];
@@ -77,198 +94,50 @@ public final class JointsEditorPanel extends JPanel {
 			
 		});
 		
-		getJointLocations().add(new Point3f());
+		this.setupControlPanel();
+		this.setupScene();
 		
-		getScene().getView().getRenderers().add(g -> {
-			renderJoints(g);
-			renderSegments(g);
-		});
+		this.add(horizontalSplit(this.getControlPanel(), this.getScene().getView()), BorderLayout.CENTER);
+	}
+	
+	private final void setupControlPanel() {
+		final DefaultTableModel properties = (DefaultTableModel) this.getControlPanel().getPropertyTable().getModel();
 		
-		new MouseHandler() {
-			
-			private final Point mouse = new Point();
-			
-			private boolean moving = false;
+		properties.addRow(array(KEY_CONFIG_SHOW_CONSTRAINTS, "false"));
+		properties.addRow(array(KEY_CONFIG_SEGMENT_THICKNESS, "2"));
+		properties.addRow(array(KEY_CONFIG_JOINT_RADIUS, "0.04"));
+		
+		properties.addTableModelListener(new TableModelListener() {
 			
 			@Override
-			public final void mouseDragged(final MouseEvent event) {
-				if (this.moving) {
-					final List<Point3f> activePoints = collectPointsFromSelection();
+			public final void tableChanged(final TableModelEvent event) {
+				if (event.getType() == TableModelEvent.UPDATE) {
+					final Object key = properties.getValueAt(event.getFirstRow(), 0);
 					
-					if (!activePoints.isEmpty()) {
-						final AffineTransform graphicsTransform = getScene().getGraphicsTransform();
-						final Point2D previousMouse = new Point2D.Double(this.mouse.x, this.mouse.y);
-						final Point2D currentMouse = new Point2D.Double(event.getX(), event.getY());
+					if (KEY_CONFIG_SEGMENT_THICKNESS.equals(key)) {
+						final String value = properties.getValueAt(event.getFirstRow(), 1).toString();
+						final JLView view = getScene().getView();
+						final Graphics2D canvasGraphics = view.getCanvas().getGraphics();
 						
-						try {
-							graphicsTransform.inverseTransform(previousMouse, previousMouse);
-							graphicsTransform.inverseTransform(currentMouse, currentMouse);
-							
-							final Matrix4f m = getScene().getCamera().getProjectionView(new Matrix4f());
-							
-							m.invert();
-							
-							final Point3f previousLocation = point3f(previousMouse);
-							final Point3f currentLocation = point3f(currentMouse);
-							
-							m.transform(previousLocation);
-							m.transform(currentLocation);
-							
-							currentLocation.sub(previousLocation);
-							
-							activePoints.forEach(p -> p.add(currentLocation));
-							
-							scheduleUpdate();
-						} catch (final NoninvertibleTransformException exception) {
-							exception.printStackTrace();
-						}
-					}
-				}
-				
-				this.mouse.setLocation(event.getX(), event.getY());
-			}
-			
-			@Override
-			public final void mouseMoved(final MouseEvent event) {
-				final int idUnderMouse = getScene().getIdUnderMouse();
-				
-				if (idUnderMouse != getHighlighted()[0]) {
-					getHighlighted()[0] = idUnderMouse;
-					scheduleUpdate();
-				}
-			}
-			
-			@Override
-			public final void mousePressed(final MouseEvent event) {
-				this.mouse.setLocation(event.getX(), event.getY());
-				
-				if (event.isPopupTrigger()) {
-					return;
-				}
-				
-				final int id = getHighlighted()[0];
-				
-				if (id != 0) {
-					if (event.isShiftDown()) {
-						if (!getSelection().add(id)) {
-							getSelection().remove(id);
-						}
-					} else {
-						getSelection().clear();
-						getSelection().add(id);
-					}
-					
-					this.moving = true;
-					getScene().getView().removeMouseMotionListener(getOrbiter());
-					
-					scheduleUpdate();
-				} else if (!Arrays.asList(getScene().getView().getMouseMotionListeners()).contains(getOrbiter())) {
-					this.moving = false;
-					getScene().getView().addMouseMotionListener(getOrbiter());
-				}
-			}
-			
-			@Override
-			public final void mouseClicked(final MouseEvent event) {
-				if (event.isPopupTrigger()) {
-					return;
-				}
-				
-				final int id = getHighlighted()[0];
-				
-				if (event.getClickCount() == 2 && id == 0) {
-					final Matrix4f m = new Matrix4f();
-					
-					getScene().getCamera().getProjectionView(m);
-					
-					m.invert();
-					
-					final Point3f p = new Point3f(
-							2F * event.getX() / getScene().getView().getWidth() - 1F,
-							1F - 2F * event.getY() / getScene().getView().getHeight(),
-							0F);
-					
-					m.transform(p);
-					
-					getJointLocations().add(p);
-					getHighlighted()[0] = getJointLocations().size() * 2 - 1;
-					
-					scheduleUpdate();
-				}
-			}
-			
-			private static final long serialVersionUID = 8216721073603131316L;
-			
-		}.addTo(getScene().getView());
-		
-		getScene().getView().addKeyListener(new KeyAdapter() {
-			
-			@Override
-			public final void keyPressed(final KeyEvent event) {
-				if (event.getKeyCode() == KeyEvent.VK_SPACE) {
-					final Point3f center = new Point3f();
-					final List<Point3f> points = collectPointsFromSelection();
-					
-					if (!points.isEmpty()) {
-						points.forEach(center::add);
-						center.scale(1F / points.size());
+						canvasGraphics.setStroke(new BasicStroke(parseFloat(value) / max(view.getWidth(), view.getHeight())));
+						getScene().getIds().getGraphics().setStroke(canvasGraphics.getStroke());
 						
-						getOrbiter().getTarget().set(center);
-						getOrbiter().updateCamera();
-					}
-				} if (event.getKeyCode() == KeyEvent.VK_O && event.isControlDown()) {
-					open();
-				} else if (event.getKeyCode() == KeyEvent.VK_S && event.isControlDown()) {
-					save();
-				} else if (event.getKeyCode() == KeyEvent.VK_D) {
-					SwingTools.show(getScene().getIds().getImage(), "ids", false);
-				} else if (event.getKeyCode() == KeyEvent.VK_BACK_SPACE) {
-					deleteSelection();
-				} else if (event.getKeyCode() == KeyEvent.VK_ENTER) {
-					final Integer[] selected = getSelection().toArray(new Integer[getSelection().size()]);
-					
-					if (selected.length == 2 && (selected[0] & 1) == 1 && (selected[1] & 1) == 1) {
-						getSegments().add(new Segment(point(selected[0]), point(selected[1])));
-						getSelection().clear();
-						getSelection().add(2 + 2 * (getSegments().size() - 1));
 						scheduleUpdate();
-					} else if (0 < selected.length && Arrays.stream(selected).allMatch(id -> (id & 1) == 0)) {
-						final double average = Arrays.stream(selected).map(JointsEditorPanel.this::segment).mapToDouble(Segment::getConstraint).average().getAsDouble();
-						final String newConstraintAsString = JOptionPane.showInputDialog("constraint:", average);
-						
-						if (newConstraintAsString != null) {
-							final double newConstraint = Double.parseDouble(newConstraintAsString);
-							
-							Arrays.stream(selected).forEach(id -> segment(id).setConstraint(newConstraint));
-							
-							scheduleUpdate();
-						}
 					}
 				}
 			}
 			
 		});
-		
-		getScene().getView().setFocusable(true);
-		
-		getScene().getView().getRenderers().add(g -> {
-			getModel().applyConstraints(getScene().getUpdateNeeded());
-		});
-		
-		{
-			final List<Point3f> locations = getScene().getLocations().computeIfAbsent("shape", k -> new ArrayList<>());
-			
-			locations.add(new Point3f(-1F, 0F, -1F));
-			locations.add(new Point3f(-1F, 0F, 1F));
-			locations.add(new Point3f(1F, 0F, 1F));
-			locations.add(new Point3f(1F, 0F, -1F));
-		}
-		
-		getScene().getView().getRenderers().add(g -> {
-			getScene().draw(getScene().polygon("shape", new Path2D.Float()), Color.RED, -1, g);
-		});
-		
-		this.add(this.getScene().getView(), BorderLayout.CENTER);
+	}
+	
+	static final List<String> KEY_CONFIG_SHOW_CONSTRAINTS = Arrays.asList("config/show_constraints");
+	
+	static final List<String> KEY_CONFIG_SEGMENT_THICKNESS = Arrays.asList("config/segment_thickness");
+	
+	static final List<String> KEY_CONFIG_JOINT_RADIUS = Arrays.asList("config/joint_radius");
+	
+	public final ControlPanel getControlPanel() {
+		return this.controlPanel;
 	}
 	
 	public final Scene getScene() {
@@ -311,6 +180,35 @@ public final class JointsEditorPanel extends JPanel {
 	public final JointsEditorPanel open(final File file) {
 		try (final InputStream input = new FileInputStream(file)) {
 			this.getModel().fromXML(XMLTools.parse(input));
+			
+			{
+				final DefaultTableModel properties = ((DefaultTableModel) getControlPanel().getPropertyTable().getModel());
+				
+				for (int i = properties.getRowCount() - 1; 0 <= i; --i) {
+					@SuppressWarnings("unchecked")
+					final List<String> key = (List<String>) properties.getValueAt(i, 0);
+					
+					if (key.get(0).startsWith("segments/") || key.get(0).startsWith("joints/")) {
+						properties.removeRow(i);
+					}
+				}
+				
+				{
+					final int n = this.getModel().getJointLocations().size();
+					
+					for (int i = 0; i < n; ++i) {
+						properties.addRow(array(list("joints/" + i), this.getModel().getJointLocations().get(i)));
+					}
+				}
+				
+				{
+					final int n = this.getModel().getSegments().size();
+					
+					for (int i = 0; i < n; ++i) {
+						properties.addRow(array(list("segments/" + i), this.getModel().getSegments().get(i)));
+					}
+				}
+			}
 			getSelection().clear();
 			getHighlighted()[0] = 0;
 			scheduleUpdate();
@@ -375,7 +273,7 @@ public final class JointsEditorPanel extends JPanel {
 			
 			getScene().draw(shape, id == getHighlighted()[0] ? Color.YELLOW : getSelection().contains(id) ? Color.RED : Color.BLUE, id, g);
 			
-			if (false) {
+			if ("true".equalsIgnoreCase(getControlPanel().getValue(KEY_CONFIG_SHOW_CONSTRAINTS).toString())) {
 				final Point2D p2D = point2D(middle(p1, p2));
 				final AffineTransform transform = getScene().getGraphicsTransform();
 				
@@ -400,12 +298,12 @@ public final class JointsEditorPanel extends JPanel {
 	}
 	
 	final void renderJoints(final Graphics2D g) {
+		final double r = Double.parseDouble(getControlPanel().getValue(KEY_CONFIG_JOINT_RADIUS));
 		final int n = getJointLocations().size();
 		
 		for (int i = 0; i < n; ++i) {
 			final int id = 2 * i + 1;
 			final Point3f p = getScene().getTransformed(getJointLocations().get(i));
-			final double r = 0.02;
 			final Shape shape = new Ellipse2D.Double(p.x - r, p.y - r, 2.0 * r, 2.0 * r);
 			
 			getScene().fill(shape, id == getHighlighted()[0] ? Color.YELLOW : getSelection().contains(id) ? Color.RED : Color.BLUE, id, g);
@@ -440,8 +338,212 @@ public final class JointsEditorPanel extends JPanel {
 		
 		return result;
 	}
-
+	
+	private final void setupScene() {
+		getScene().getView().getRenderers().add(g -> {
+			renderJoints(g);
+			renderSegments(g);
+		});
+		
+		new MouseHandler() {
+			
+			private final Point mouse = new Point();
+			
+			private boolean moving = false;
+			
+			@Override
+			public final void mouseDragged(final MouseEvent event) {
+				if (this.moving) {
+					final List<Point3f> activePoints = collectPointsFromSelection();
+					
+					if (!activePoints.isEmpty()) {
+						final AffineTransform graphicsTransform = getScene().getGraphicsTransform();
+						final Point2D previousMouse = new Point2D.Double(this.mouse.x, this.mouse.y);
+						final Point2D currentMouse = new Point2D.Double(event.getX(), event.getY());
+						
+						try {
+							graphicsTransform.inverseTransform(previousMouse, previousMouse);
+							graphicsTransform.inverseTransform(currentMouse, currentMouse);
+							
+							final Matrix4f m = getScene().getCamera().getProjectionView(new Matrix4f());
+							
+							m.invert();
+							
+							final Point3f previousLocation = point3f(previousMouse);
+							final Point3f currentLocation = point3f(currentMouse);
+							
+							m.transform(previousLocation);
+							m.transform(currentLocation);
+							
+							currentLocation.sub(previousLocation);
+							
+							activePoints.forEach(p -> p.add(currentLocation));
+							
+							scheduleUpdate();
+						} catch (final NoninvertibleTransformException exception) {
+							exception.printStackTrace();
+						}
+					}
+				}
+				
+				this.mouse.setLocation(event.getX(), event.getY());
+			}
+			
+			@Override
+			public final void mouseMoved(final MouseEvent event) {
+				final int idUnderMouse = getScene().getIdUnderMouse();
+				
+				if (idUnderMouse != getHighlighted()[0]) {
+					getHighlighted()[0] = idUnderMouse;
+					scheduleUpdate();
+				}
+			}
+			
+			@Override
+			public final void mousePressed(final MouseEvent event) {
+				getScene().getView().requestFocusInWindow();
+				
+				this.mouse.setLocation(event.getX(), event.getY());
+				
+				if (event.isPopupTrigger()) {
+					return;
+				}
+				
+				final int id = getHighlighted()[0];
+				
+				if (id != 0) {
+					if (event.isShiftDown()) {
+						if (!getSelection().add(id)) {
+							getSelection().remove(id);
+						}
+					} else {
+						getSelection().clear();
+						getSelection().add(id);
+					}
+					
+					this.moving = true;
+					getScene().getView().removeMouseMotionListener(getOrbiter());
+					
+					scheduleUpdate();
+				} else if (!Arrays.asList(getScene().getView().getMouseMotionListeners()).contains(getOrbiter())) {
+					this.moving = false;
+					getScene().getView().addMouseMotionListener(getOrbiter());
+				}
+			}
+			
+			@Override
+			public final void mouseClicked(final MouseEvent event) {
+				if (event.isPopupTrigger()) {
+					return;
+				}
+				
+				final int id = getHighlighted()[0];
+				
+				if (event.getClickCount() == 2 && id == 0) {
+					final Matrix4f m = new Matrix4f();
+					
+					getScene().getCamera().getProjectionView(m);
+					
+					m.invert();
+					
+					final Point3f p = new Point3f(
+							2F * event.getX() / getScene().getView().getWidth() - 1F,
+							1F - 2F * event.getY() / getScene().getView().getHeight(),
+							0F);
+					
+					m.transform(p);
+					
+					getJointLocations().add(p);
+					final int index = getJointLocations().size() - 1;
+					getHighlighted()[0] = index * 2 + 1;
+					((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
+							array(list("joints/" + index), p));
+					
+					scheduleUpdate();
+				}
+			}
+			
+			private static final long serialVersionUID = 8216721073603131316L;
+			
+		}.addTo(getScene().getView());
+		
+		getScene().getView().addKeyListener(new KeyAdapter() {
+			
+			@Override
+			public final void keyPressed(final KeyEvent event) {
+				if (event.getKeyCode() == KeyEvent.VK_SPACE) {
+					final Point3f center = new Point3f();
+					final List<Point3f> points = collectPointsFromSelection();
+					
+					if (!points.isEmpty()) {
+						points.forEach(center::add);
+						center.scale(1F / points.size());
+						
+						getOrbiter().getTarget().set(center);
+						getOrbiter().updateCamera();
+					}
+				} if (event.getKeyCode() == KeyEvent.VK_O && event.isControlDown()) {
+					open();
+				} else if (event.getKeyCode() == KeyEvent.VK_S && event.isControlDown()) {
+					save();
+				} else if (event.getKeyCode() == KeyEvent.VK_D) {
+					SwingTools.show(getScene().getIds().getImage(), "ids", false);
+				} else if (event.getKeyCode() == KeyEvent.VK_BACK_SPACE) {
+					deleteSelection();
+				} else if (event.getKeyCode() == KeyEvent.VK_ENTER) {
+					final Integer[] selected = getSelection().toArray(new Integer[getSelection().size()]);
+					
+					if (selected.length == 2 && (selected[0] & 1) == 1 && (selected[1] & 1) == 1) {
+						final Segment segment = new Segment(point(selected[0]), point(selected[1]));
+						getSegments().add(segment);
+						getSelection().clear();
+						final int index = getSegments().size() - 1;
+						getSelection().add(index * 2 + 2);
+						((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
+								array(list("segments/" + index), segment));
+						scheduleUpdate();
+					} else if (0 < selected.length && Arrays.stream(selected).allMatch(JointsEditorPanel::isSegment)) {
+						final double average = Arrays.stream(selected).map(JointsEditorPanel.this::segment).mapToDouble(Segment::getConstraint).average().getAsDouble();
+						final String newConstraintAsString = JOptionPane.showInputDialog("constraint:", average);
+						
+						if (newConstraintAsString != null) {
+							final double newConstraint = Double.parseDouble(newConstraintAsString);
+							
+							Arrays.stream(selected).forEach(id -> segment(id).setConstraint(newConstraint));
+							
+							scheduleUpdate();
+						}
+					}
+				}
+			}
+			
+		});
+		
+		getScene().getView().setFocusable(true);
+		
+		getScene().getView().getRenderers().add(g -> {
+			getModel().applyConstraints(getScene().getUpdateNeeded());
+		});
+		
+		{
+			final List<Point3f> locations = getScene().getLocations().computeIfAbsent("shape", k -> new ArrayList<>());
+			
+			locations.add(new Point3f(-1F, 0F, -1F));
+			locations.add(new Point3f(-1F, 0F, 1F));
+			locations.add(new Point3f(1F, 0F, 1F));
+			locations.add(new Point3f(1F, 0F, -1F));
+		}
+		
+		getScene().getView().getRenderers().add(g -> {
+			getScene().draw(getScene().polygon("shape", new Path2D.Float()), Color.RED, -1, g);
+		});
+	}
+	
 	private static final long serialVersionUID = 6374986295888991754L;
+	
+	public static final <E> List<E> list(@SuppressWarnings("unchecked") final E... elements) {
+		return new ArrayList<>(Arrays.asList(elements));
+	}
 	
 	public static final Point3f point3f(final Point2D p) {
 		return point3f(p, new Point3f());
@@ -517,6 +619,66 @@ public final class JointsEditorPanel extends JPanel {
 	
 	static final int segmentIndex(final int id) {
 		return (id - 2) >> 1;
+	}
+	
+	/**
+	 * @author codistmonk (creation 2015-07-31)
+	 */
+	public static final class ControlPanel extends JPanel {
+		
+		private final JTextField filterField;
+		
+		private final JTable propertyTable;
+		
+		@SuppressWarnings("unchecked")
+		public ControlPanel() {
+			super(new BorderLayout());
+			this.filterField = new JTextField();
+			this.propertyTable = new JTable(new DefaultTableModel(array("Key", "Value"), 0) {
+				
+				@Override
+				public final boolean isCellEditable(final int row, final int column) {
+					return column != 0;
+				}
+				
+				private static final long serialVersionUID = 6329345725539288994L;
+				
+			});
+			
+			this.getPropertyTable().setRowSorter(new TableRowSorter<>(this.getPropertyTable().getModel()));
+			
+			this.getFilterField().addActionListener(event -> {
+				((TableRowSorter<DefaultTableModel>) getPropertyTable().getRowSorter()).setRowFilter(RowFilter.regexFilter(getFilterField().getText()));
+			});
+			
+			this.add(this.getFilterField(), BorderLayout.NORTH);
+			this.add(scrollable(this.getPropertyTable()), BorderLayout.CENTER);
+		}
+		
+		public final JTextField getFilterField() {
+			return this.filterField;
+		}
+		
+		public final JTable getPropertyTable() {
+			return this.propertyTable;
+		}
+		
+		@SuppressWarnings("unchecked")
+		public final <V> V getValue(final Object key) {
+			final TableModel model = this.getPropertyTable().getModel();
+			final int n = model.getRowCount();
+			
+			for (int i = 0; i < n; ++i) {
+				if (key.equals(model.getValueAt(i, 0))) {
+					return (V) model.getValueAt(i, 1);
+				}
+			}
+			
+			return null;
+		}
+		
+		private static final long serialVersionUID = 719479298612973559L;
+		
 	}
 	
 }

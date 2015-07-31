@@ -1,8 +1,9 @@
 package joints2;
 
-import javax.swing.SwingUtilities;
+import static javax.swing.SwingUtilities.invokeLater;
+import static multij.swing.SwingTools.show;
+import static multij.swing.SwingTools.useSystemLookAndFeel;
 
-import multij.swing.SwingTools;
 import multij.tools.IllegalInstantiationException;
 
 /**
@@ -19,7 +20,8 @@ public final class Demo {
 	 * <br>Unused
 	 */
 	public static final void main(final String[] commandLineArguments) {
-		SwingUtilities.invokeLater(() -> SwingTools.show(new JointsEditorPanel(), Demo.class.getName(), false));
+		useSystemLookAndFeel();
+		invokeLater(() -> show(new JointsEditorPanel(), Demo.class.getName(), false));
 	}
 	
 }
