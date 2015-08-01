@@ -46,7 +46,7 @@ public final class JLView extends JComponent implements JL {
 					g.setTransform(new AffineTransform());
 					g.translate(w / 2.0, h / 2.0);
 					g.scale(m / 2.0, -m / 2.0);
-					g.setStroke(new BasicStroke(2F / m));
+					g.setStroke(new BasicStroke(DEFAULT_LINE_THICKNESS / m));
 				}
 			}
 			
@@ -101,5 +101,7 @@ public final class JLView extends JComponent implements JL {
 	}
 	
 	private static final long serialVersionUID = -6662651660924313728L;
+	
+	public static final float DEFAULT_LINE_THICKNESS = 2F;
 	
 }

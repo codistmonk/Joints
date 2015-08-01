@@ -2,6 +2,7 @@ package joints2;
 
 import static java.lang.Math.random;
 import static java.util.stream.Collectors.toList;
+import static multij.tools.Tools.*;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -177,6 +178,18 @@ public final class JointsModel implements Serializable {
 			return point == this.getPoint1() || point == this.getPoint2();
 		}
 		
+		@Override
+		public final int hashCode() {
+			return this.getPoint1().hashCode() + this.getPoint2().hashCode();
+		}
+		
+		@Override
+		public final boolean equals(final Object object) {
+			final Segment that = cast(this.getClass(), object);
+			
+			return that != null && this.getPoint1() == that.getPoint1() && this.getPoint2() == that.getPoint2();
+		}
+
 		private static final long serialVersionUID = 2645415714139697519L;
 		
 	}

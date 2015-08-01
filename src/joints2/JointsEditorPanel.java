@@ -2,6 +2,7 @@ package joints2;
 
 import static java.lang.Float.parseFloat;
 import static java.lang.Math.max;
+import static java.lang.Math.min;
 import static java.util.stream.Collectors.toList;
 import static multij.swing.SwingTools.horizontalSplit;
 import static multij.swing.SwingTools.scrollable;
@@ -13,7 +14,6 @@ import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Graphics2D;
-import java.awt.Point;
 import java.awt.Shape;
 import java.awt.event.HierarchyEvent;
 import java.awt.event.HierarchyListener;
@@ -33,7 +33,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import javax.swing.JFileChooser;
@@ -52,7 +52,6 @@ import javax.vecmath.Matrix4f;
 import javax.vecmath.Point3f;
 
 import joints2.JointsModel.Segment;
-
 import multij.swing.MouseHandler;
 import multij.swing.SwingTools;
 import multij.xml.XMLTools;
@@ -82,7 +81,7 @@ public final class JointsEditorPanel extends JPanel {
 		this.scene = new Scene().setClearColor(Color.WHITE);
 		this.model = new JointsModel(this.getScene(), "joints");
 		this.highlighted = new int[1];
-		this.selection = new HashSet<>();
+		this.selection = new LinkedHashSet<>();
 		this.orbiter = new Orbiter(this.getScene().getUpdateNeeded(), this.getScene().getCamera()).addTo(this.getScene().getView());
 		
 		this.addHierarchyListener(new HierarchyListener() {
@@ -104,8 +103,8 @@ public final class JointsEditorPanel extends JPanel {
 		final DefaultTableModel properties = (DefaultTableModel) this.getControlPanel().getPropertyTable().getModel();
 		
 		properties.addRow(array(KEY_CONFIG_SHOW_CONSTRAINTS, "false"));
-		properties.addRow(array(KEY_CONFIG_SEGMENT_THICKNESS, "2"));
-		properties.addRow(array(KEY_CONFIG_JOINT_RADIUS, "0.04"));
+		properties.addRow(array(KEY_CONFIG_SEGMENT_THICKNESS, Float.toString(JLView.DEFAULT_LINE_THICKNESS)));
+		properties.addRow(array(KEY_CONFIG_JOINT_RADIUS, "0.02"));
 		
 		properties.addTableModelListener(new TableModelListener() {
 			
@@ -347,35 +346,30 @@ public final class JointsEditorPanel extends JPanel {
 		
 		new MouseHandler() {
 			
-			private final Point mouse = new Point();
-			
-			private boolean moving = false;
+			private float z = Float.NaN;
 			
 			@Override
 			public final void mouseDragged(final MouseEvent event) {
-				if (this.moving) {
+				if (!Float.isNaN(this.z)) {
 					final List<Point3f> activePoints = collectPointsFromSelection();
 					
 					if (!activePoints.isEmpty()) {
+						final Point3f center = center(activePoints);
 						final AffineTransform graphicsTransform = getScene().getGraphicsTransform();
-						final Point2D previousMouse = new Point2D.Double(this.mouse.x, this.mouse.y);
 						final Point2D currentMouse = new Point2D.Double(event.getX(), event.getY());
 						
 						try {
-							graphicsTransform.inverseTransform(previousMouse, previousMouse);
 							graphicsTransform.inverseTransform(currentMouse, currentMouse);
 							
 							final Matrix4f m = getScene().getCamera().getProjectionView(new Matrix4f());
 							
 							m.invert();
 							
-							final Point3f previousLocation = point3f(previousMouse);
-							final Point3f currentLocation = point3f(currentMouse);
+							final Point3f currentLocation = point3f(currentMouse, this.z);
 							
-							m.transform(previousLocation);
 							m.transform(currentLocation);
 							
-							currentLocation.sub(previousLocation);
+							currentLocation.sub(center);
 							
 							activePoints.forEach(p -> p.add(currentLocation));
 							
@@ -385,8 +379,6 @@ public final class JointsEditorPanel extends JPanel {
 						}
 					}
 				}
-				
-				this.mouse.setLocation(event.getX(), event.getY());
 			}
 			
 			@Override
@@ -402,8 +394,6 @@ public final class JointsEditorPanel extends JPanel {
 			@Override
 			public final void mousePressed(final MouseEvent event) {
 				getScene().getView().requestFocusInWindow();
-				
-				this.mouse.setLocation(event.getX(), event.getY());
 				
 				if (event.isPopupTrigger()) {
 					return;
@@ -421,12 +411,12 @@ public final class JointsEditorPanel extends JPanel {
 						getSelection().add(id);
 					}
 					
-					this.moving = true;
+					this.z = isJoint(id) ? getScene().getTransformed(point(id)).z : middle(getScene().getTransformed(segment(id).getPoint1()).z, getScene().getTransformed(segment(id).getPoint2()).z);
 					getScene().getView().removeMouseMotionListener(getOrbiter());
 					
 					scheduleUpdate();
 				} else if (!Arrays.asList(getScene().getView().getMouseMotionListeners()).contains(getOrbiter())) {
-					this.moving = false;
+					this.z = Float.NaN;
 					getScene().getView().addMouseMotionListener(getOrbiter());
 				}
 			}
@@ -472,14 +462,10 @@ public final class JointsEditorPanel extends JPanel {
 			@Override
 			public final void keyPressed(final KeyEvent event) {
 				if (event.getKeyCode() == KeyEvent.VK_SPACE) {
-					final Point3f center = new Point3f();
 					final List<Point3f> points = collectPointsFromSelection();
 					
 					if (!points.isEmpty()) {
-						points.forEach(center::add);
-						center.scale(1F / points.size());
-						
-						getOrbiter().getTarget().set(center);
+						getOrbiter().getTarget().set(center(points));
 						getOrbiter().updateCamera();
 					}
 				} if (event.getKeyCode() == KeyEvent.VK_O && event.isControlDown()) {
@@ -492,26 +478,41 @@ public final class JointsEditorPanel extends JPanel {
 					deleteSelection();
 				} else if (event.getKeyCode() == KeyEvent.VK_ENTER) {
 					final Integer[] selected = getSelection().toArray(new Integer[getSelection().size()]);
+					final int n = selected.length;
 					
-					if (selected.length == 2 && (selected[0] & 1) == 1 && (selected[1] & 1) == 1) {
-						final Segment segment = new Segment(point(selected[0]), point(selected[1]));
-						getSegments().add(segment);
-						getSelection().clear();
-						final int index = getSegments().size() - 1;
-						getSelection().add(index * 2 + 2);
-						((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
-								array(list("segments/" + index), segment));
-						scheduleUpdate();
-					} else if (0 < selected.length && Arrays.stream(selected).allMatch(JointsEditorPanel::isSegment)) {
-						final double average = Arrays.stream(selected).map(JointsEditorPanel.this::segment).mapToDouble(Segment::getConstraint).average().getAsDouble();
-						final String newConstraintAsString = JOptionPane.showInputDialog("constraint:", average);
-						
-						if (newConstraintAsString != null) {
-							final double newConstraint = Double.parseDouble(newConstraintAsString);
+					if (0 < n) {
+						if (Arrays.stream(selected).allMatch(JointsEditorPanel::isJoint)) {
+							getSelection().clear();
 							
-							Arrays.stream(selected).forEach(id -> segment(id).setConstraint(newConstraint));
+							for (int i = 0; i < n; ++i) {
+								for (int j = i + 1; j < n; ++j) {
+									final int i1 = min(selected[i], selected[j]);
+									final int i2 = max(selected[i], selected[j]);
+									final Segment segment = new Segment(point(i1), point(i2));
+									
+									if (!getSegments().contains(segment)) {
+										final int index = getSegments().size();
+										
+										getSegments().add(segment);
+										getSelection().add(index * 2 + 2);
+										((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
+												array(list("segments/" + index), segment));
+									}
+								}
+							}
 							
 							scheduleUpdate();
+						} else if (Arrays.stream(selected).allMatch(JointsEditorPanel::isSegment)) {
+							final double average = Arrays.stream(selected).map(JointsEditorPanel.this::segment).mapToDouble(Segment::getConstraint).average().getAsDouble();
+							final String newConstraintAsString = JOptionPane.showInputDialog("constraint:", average);
+							
+							if (newConstraintAsString != null) {
+								final double newConstraint = Double.parseDouble(newConstraintAsString);
+								
+								Arrays.stream(selected).forEach(id -> segment(id).setConstraint(newConstraint));
+								
+								scheduleUpdate();
+							}
 						}
 					}
 				}
@@ -535,24 +536,43 @@ public final class JointsEditorPanel extends JPanel {
 		}
 		
 		getScene().getView().getRenderers().add(g -> {
-			getScene().draw(getScene().polygon("shape", new Path2D.Float()), Color.RED, -1, g);
+			getScene().draw(getScene().polygon("shape", new Path2D.Float()), Color.BLACK, -1, g);
 		});
 	}
-	
+
 	private static final long serialVersionUID = 6374986295888991754L;
+	
+	public static final Point3f center(final List<Point3f> points) {
+		final Point3f result = new Point3f();
+		
+		if (!points.isEmpty()) {
+			points.forEach(result::add);
+			result.scale(1F / points.size());
+		}
+		
+		return result;
+	}
 	
 	public static final <E> List<E> list(@SuppressWarnings("unchecked") final E... elements) {
 		return new ArrayList<>(Arrays.asList(elements));
 	}
 	
 	public static final Point3f point3f(final Point2D p) {
-		return point3f(p, new Point3f());
+		return point3f(p, 0F);
+	}
+	
+	public static final Point3f point3f(final Point2D p, final float z) {
+		return point3f(p, z, new Point3f());
 	}
 	
 	public static final Point3f point3f(final Point2D p, final Point3f result) {
+		return point3f(p, 0F, result);
+	}
+	
+	public static final Point3f point3f(final Point2D p, final float z, final Point3f result) {
 		result.x = (float) p.getX();
 		result.y = (float) p.getY();
-		result.z = 0F;
+		result.z = z;
 		
 		return result;
 	}
