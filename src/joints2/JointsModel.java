@@ -138,46 +138,49 @@ public final class JointsModel implements Serializable {
 	
 	public final void applyConstraints(final AtomicBoolean updateNeeded) {
 		final float momentum = 0.4F;
-		final float rigidity = 0.9F;
+		final float springiness = 0.9F;
+		final int rigidity = 32;
 		
-		for (final Point3f point : this.getJointLocations()) {
-			final Point3f previous = this.previousJointLocations.computeIfAbsent(point, p -> new Point3f(p));
-			
-			point.x += (point.x - previous.x) * momentum;
-			point.y += (point.y - previous.y) * momentum;
-			point.z += (point.z - previous.z) * momentum;
-			
-			previous.set(point);
-		}
-		
-		for (final JointsModel.Segment segment : this.getSegments()) {
-			final Point3f point1 = segment.getPoint1();
-			final Point3f point2 = segment.getPoint2();
-			final double constraint = segment.getConstraint();
-			double distance = point1.distance(point2);
-			
-			if (distance != constraint) {
-				final Point3f middle = JointsEditorPanel.middle(point1, point2);
+		for (int i = 0; i < rigidity; ++i) {
+			for (final Point3f point : this.getJointLocations()) {
+				final Point3f previous = this.previousJointLocations.computeIfAbsent(point, p -> new Point3f(p));
 				
-				if (distance == 0.0) {
-					final Point3f delta = new Point3f((float) (random() - 0.5), (float) (random() - 0.5), (float) (random() - 0.5));
-					point1.add(delta);
-					point2.sub(delta);
+				point.x += (point.x - previous.x) * momentum;
+				point.y += (point.y - previous.y) * momentum;
+				point.z += (point.z - previous.z) * momentum;
+				
+				previous.set(point);
+			}
+			
+			for (final JointsModel.Segment segment : this.getSegments()) {
+				final Point3f point1 = segment.getPoint1();
+				final Point3f point2 = segment.getPoint2();
+				final double constraint = segment.getConstraint();
+				double distance = point1.distance(point2);
+				
+				if (distance != constraint) {
+					final Point3f middle = JointsEditorPanel.middle(point1, point2);
 					
-					distance = point1.distance(point2);
-				}
-				
-				if (distance != 0.0) {
-					final float k = (float) (lerp(distance, rigidity, constraint) / distance);
+					if (distance == 0.0) {
+						final Point3f delta = new Point3f((float) (random() - 0.5), (float) (random() - 0.5), (float) (random() - 0.5));
+						point1.add(delta);
+						point2.sub(delta);
+						
+						distance = point1.distance(point2);
+					}
 					
-					middle.scale(1F - k);
-					point1.scale(k);
-					point1.add(middle);
-					point2.scale(k);
-					point2.add(middle);
+					if (distance != 0.0) {
+						final float k = (float) (lerp(distance, springiness, constraint) / distance);
+						
+						middle.scale(1F - k);
+						point1.scale(k);
+						point1.add(middle);
+						point2.scale(k);
+						point2.add(middle);
+					}
+					
+					updateNeeded.set(true);
 				}
-				
-				updateNeeded.set(true);
 			}
 		}
 	}
