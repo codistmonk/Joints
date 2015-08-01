@@ -103,6 +103,7 @@ public final class JointsEditorPanel extends JPanel {
 		final DefaultTableModel properties = (DefaultTableModel) this.getControlPanel().getPropertyTable().getModel();
 		
 		properties.addRow(array(KEY_CONFIG_SHOW_CONSTRAINTS, "false"));
+		properties.addRow(array(KEY_CONFIG_SOLVE_CONSTRAINTS, "true"));
 		properties.addRow(array(KEY_CONFIG_SEGMENT_THICKNESS, Float.toString(JLView.DEFAULT_LINE_THICKNESS)));
 		properties.addRow(array(KEY_CONFIG_JOINT_RADIUS, "0.02"));
 		
@@ -134,6 +135,8 @@ public final class JointsEditorPanel extends JPanel {
 	static final List<String> KEY_CONFIG_SEGMENT_THICKNESS = Arrays.asList("config/segment_thickness");
 	
 	static final List<String> KEY_CONFIG_JOINT_RADIUS = Arrays.asList("config/joint_radius");
+	
+	static final List<String> KEY_CONFIG_SOLVE_CONSTRAINTS = Arrays.asList("config/solve_constraints");
 	
 	public final ControlPanel getControlPanel() {
 		return this.controlPanel;
@@ -167,6 +170,40 @@ public final class JointsEditorPanel extends JPanel {
 		return this.orbiter;
 	}
 	
+	public final void clear() {
+		final DefaultTableModel properties = ((DefaultTableModel) getControlPanel().getPropertyTable().getModel());
+		
+		for (int i = properties.getRowCount() - 1; 0 <= i; --i) {
+			@SuppressWarnings("unchecked")
+			final List<String> key = (List<String>) properties.getValueAt(i, 0);
+			
+			if (key.get(0).startsWith("segments/") || key.get(0).startsWith("joints/")) {
+				properties.removeRow(i);
+			}
+		}
+		
+		getSelection().clear();
+		getHighlighted()[0] = 0;
+		
+		this.getModel().clear();
+		
+		this.scheduleUpdate();
+	}
+	
+	public final void deletePropertiesByValues(final List<? extends Object> values) {
+		final DefaultTableModel properties = ((DefaultTableModel) getControlPanel().getPropertyTable().getModel());
+		
+		for (int i = properties.getRowCount() - 1; 0 <= i; --i) {
+			for (final Object value : values) {
+				if (value == properties.getValueAt(i, 1)) {
+					properties.removeRow(i);
+					
+					break;
+				}
+			}
+		}
+	}
+	
 	public final void open() {
 		final JFileChooser fileChooser = new JFileChooser();
 		
@@ -178,38 +215,30 @@ public final class JointsEditorPanel extends JPanel {
 	
 	public final JointsEditorPanel open(final File file) {
 		try (final InputStream input = new FileInputStream(file)) {
-			this.getModel().fromXML(XMLTools.parse(input));
+			this.getModel().addFromXML(XMLTools.parse(input));
 			
 			{
 				final DefaultTableModel properties = ((DefaultTableModel) getControlPanel().getPropertyTable().getModel());
 				
-				for (int i = properties.getRowCount() - 1; 0 <= i; --i) {
-					@SuppressWarnings("unchecked")
-					final List<String> key = (List<String>) properties.getValueAt(i, 0);
+				{
+					final List<Point3f> jointLocations = this.getModel().getJointLocations();
+					final int n = jointLocations.size();
 					
-					if (key.get(0).startsWith("segments/") || key.get(0).startsWith("joints/")) {
-						properties.removeRow(i);
+					for (int i = 0; i < n; ++i) {
+						properties.addRow(array(list("joints/" + i), jointLocations.get(i)));
 					}
 				}
 				
 				{
-					final int n = this.getModel().getJointLocations().size();
+					final List<Segment> segments = this.getModel().getSegments();
+					final int n = segments.size();
 					
 					for (int i = 0; i < n; ++i) {
-						properties.addRow(array(list("joints/" + i), this.getModel().getJointLocations().get(i)));
-					}
-				}
-				
-				{
-					final int n = this.getModel().getSegments().size();
-					
-					for (int i = 0; i < n; ++i) {
-						properties.addRow(array(list("segments/" + i), this.getModel().getSegments().get(i)));
+						properties.addRow(array(list("segments/" + i), segments.get(i)));
 					}
 				}
 			}
-			getSelection().clear();
-			getHighlighted()[0] = 0;
+			
 			scheduleUpdate();
 		} catch (final IOException exception) {
 			exception.printStackTrace();
@@ -252,6 +281,8 @@ public final class JointsEditorPanel extends JPanel {
 			getSelection().clear();
 			getJointLocations().removeAll(pointsToRemove);
 			getSegments().removeAll(segmentsToRemove);
+			this.deletePropertiesByValues(segmentsToRemove);
+			this.deletePropertiesByValues(pointsToRemove);
 			
 			scheduleUpdate();
 		}
@@ -402,14 +433,7 @@ public final class JointsEditorPanel extends JPanel {
 				final int id = getHighlighted()[0];
 				
 				if (id != 0) {
-					if (event.isShiftDown()) {
-						if (!getSelection().add(id)) {
-							getSelection().remove(id);
-						}
-					} else {
-						getSelection().clear();
-						getSelection().add(id);
-					}
+					this.select(id, event);
 					
 					this.z = isJoint(id) ? getScene().getTransformed(point(id)).z : middle(getScene().getTransformed(segment(id).getPoint1()).z, getScene().getTransformed(segment(id).getPoint2()).z);
 					getScene().getView().removeMouseMotionListener(getOrbiter());
@@ -445,11 +469,22 @@ public final class JointsEditorPanel extends JPanel {
 					
 					getJointLocations().add(p);
 					final int index = getJointLocations().size() - 1;
-					getHighlighted()[0] = index * 2 + 1;
+					this.select(getHighlighted()[0] = index * 2 + 1, event);
 					((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
 							array(list("joints/" + index), p));
 					
 					scheduleUpdate();
+				}
+			}
+			
+			private final void select(final int id, final MouseEvent event) {
+				if (event.isShiftDown()) {
+					if (!getSelection().add(id)) {
+						getSelection().remove(id);
+					}
+				} else {
+					getSelection().clear();
+					getSelection().add(id);
 				}
 			}
 			
@@ -468,7 +503,9 @@ public final class JointsEditorPanel extends JPanel {
 						getOrbiter().getTarget().set(center(points));
 						getOrbiter().updateCamera();
 					}
-				} if (event.getKeyCode() == KeyEvent.VK_O && event.isControlDown()) {
+				} else if (event.getKeyCode() == KeyEvent.VK_N && event.isControlDown()) {
+					clear();
+				} else if (event.getKeyCode() == KeyEvent.VK_O && event.isControlDown()) {
 					open();
 				} else if (event.getKeyCode() == KeyEvent.VK_S && event.isControlDown()) {
 					save();
@@ -523,7 +560,9 @@ public final class JointsEditorPanel extends JPanel {
 		getScene().getView().setFocusable(true);
 		
 		getScene().getView().getRenderers().add(g -> {
-			getModel().applyConstraints(getScene().getUpdateNeeded());
+			if ("true".equals(getControlPanel().getValue(KEY_CONFIG_SOLVE_CONSTRAINTS).toString())) {
+				getModel().applyConstraints(getScene().getUpdateNeeded());
+			}
 		});
 		
 		{

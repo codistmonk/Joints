@@ -50,17 +50,23 @@ public final class JointsModel implements Serializable {
 		return this.segments;
 	}
 	
-	public final void fromXML(final Document xml) {
+	public final JointsModel clear() {
+		getJointLocations().clear();
+		getSegments().clear();
+		
+		return this;
+	}
+	
+	public final JointsModel addFromXML(final Document xml) {
 		final List<Point3f> newJointLocations = XMLTools.getNodes(xml, "//joint").stream().map(n -> new Point3f(
 				JointsEditorPanel.getFloat(n, "@x"), JointsEditorPanel.getFloat(n, "@y"), JointsEditorPanel.getFloat(n, "@z"))).collect(toList());
 		final List<JointsModel.Segment> newSegments = XMLTools.getNodes(xml, "//segment").stream().map(n -> new Segment(
 				JointsEditorPanel.getPoint1(n, newJointLocations), JointsEditorPanel.getPoint2(n, newJointLocations)).setConstraint(JointsEditorPanel.getConstraint(n))).collect(toList());
 		
-		getJointLocations().clear();
-		getSegments().clear();
-		
 		getJointLocations().addAll(newJointLocations);
 		getSegments().addAll(newSegments);
+		
+		return this;
 	}
 	
 	public final Document toXML() {
