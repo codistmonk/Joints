@@ -541,7 +541,7 @@ public final class JointsEditorPanel extends JPanel {
 										getSegments().add(segment);
 										((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
 												array(list("segments/" + index), segment));
-										addToSelection(index * 2 + 2);
+										addToSelection(segmentId(index));
 									}
 								}
 							}
@@ -558,11 +558,11 @@ public final class JointsEditorPanel extends JPanel {
 							message.setValue("color", commonColor);
 							
 							if (JOptionPane.OK_OPTION == JOptionPane.showConfirmDialog(JointsEditorPanel.this, message)) {
-								final double newConstraint = Double.parseDouble(message.getValue("constraint"));
+								final double newConstraint = Double.parseDouble(nonempty(message.getValue("constraint"), "NaN"));
 								final String newVisibility = message.getValue("visible");
 								final String newColor = message.getValue("color");
 								
-								Arrays.stream(selected).forEach(id -> segment(id).setConstraint(newConstraint).updateStyle("visible", newVisibility).updateStyle("color", newColor));
+								Arrays.stream(selected).forEach(id -> segment(id).updateConstraint(newConstraint).updateStyle("visible", newVisibility).updateStyle("color", newColor));
 								
 								scheduleUpdate();
 							}
@@ -690,6 +690,10 @@ public final class JointsEditorPanel extends JPanel {
 		}
 		
 		return result;
+	}
+	
+	public static final String nonempty(final String value, final String defaultValue) {
+		return value == null | value.isEmpty() ? defaultValue : value;
 	}
 	
 	public static final <E> List<E> list(@SuppressWarnings("unchecked") final E... elements) {

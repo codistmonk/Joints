@@ -214,6 +214,10 @@ public final class JointsModel implements Serializable {
 			return this.constraint;
 		}
 		
+		public final Segment updateConstraint(final double constraint) {
+			return Double.isNaN(constraint) ? this : this.setConstraint(constraint);
+		}
+		
 		public final Segment setConstraint(final double constraint) {
 			this.constraint = constraint;
 			
