@@ -3,10 +3,13 @@ package joints2;
 import static java.lang.Math.random;
 import static java.util.stream.Collectors.toList;
 import static multij.tools.Tools.*;
+import static multij.xml.XMLTools.getNumber;
+import static multij.xml.XMLTools.getString;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -17,6 +20,7 @@ import multij.xml.XMLTools;
 
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 /**
  * @author codistmonk (creation 2015-07-31)
@@ -59,9 +63,10 @@ public final class JointsModel implements Serializable {
 	
 	public final JointsModel addFromXML(final Document xml) {
 		final List<Point3f> newJointLocations = XMLTools.getNodes(xml, "//joint").stream().map(n -> new Point3f(
-				JointsEditorPanel.getFloat(n, "@x"), JointsEditorPanel.getFloat(n, "@y"), JointsEditorPanel.getFloat(n, "@z"))).collect(toList());
-		final List<JointsModel.Segment> newSegments = XMLTools.getNodes(xml, "//segment").stream().map(n -> new Segment(
-				JointsEditorPanel.getPoint1(n, newJointLocations), JointsEditorPanel.getPoint2(n, newJointLocations)).setConstraint(JointsEditorPanel.getConstraint(n))).collect(toList());
+				getFloat(n, "@x"), getFloat(n, "@y"), getFloat(n, "@z"))).collect(toList());
+		final List<JointsModel.Segment> newSegments = XMLTools.getNodes(xml, "//segment").stream().map(n ->
+				new Segment(getPoint1(n, newJointLocations), getPoint2(n, newJointLocations))
+				.setConstraint(getConstraint(n)).setStyle(XMLTools.getString(n, "@style"))).collect(toList());
 		
 		getJointLocations().addAll(newJointLocations);
 		getSegments().addAll(newSegments);
@@ -84,9 +89,10 @@ public final class JointsModel implements Serializable {
 		for (final JointsModel.Segment segment : getSegments()) {
 			final Element element = (Element) root.appendChild(result.createElement("segment"));
 			
-			element.setAttribute("point1", Integer.toString(getJointLocations().indexOf(segment.getPoint1())));
-			element.setAttribute("point2", Integer.toString(getJointLocations().indexOf(segment.getPoint2())));
+			element.setAttribute("point1", Integer.toString(indexOf(segment.getPoint1(), getJointLocations())));
+			element.setAttribute("point2", Integer.toString(indexOf(segment.getPoint2(), getJointLocations())));
 			element.setAttribute("constraint", Double.toString(segment.getConstraint()));
+			element.setAttribute("style", segment.getStyleAsString());
 		}
 		
 		return result;
@@ -140,8 +146,46 @@ public final class JointsModel implements Serializable {
 	
 	private static final long serialVersionUID = -7402680801009890782L;
 	
+	public static final int indexOf(final Object needle, final List<? extends Object> haystack) {
+		int i = 0;
+		
+		for (final Object object : haystack) {
+			if (needle == object) {
+				return i;
+			}
+			
+			++i;
+		}
+		
+		return -1;
+	}
+	
 	public static final double lerp(final double a, final double t, final double b) {
 		return a * (1.0 - t) + b * t;
+	}
+	
+	public static final double parseDouble(final String s) {
+		return s.isEmpty() ? 0.0 : Double.parseDouble(s);
+	}
+	
+	public static final int getInt(final Node node, final String xPath) {
+		return getNumber(node, xPath).intValue();
+	}
+	
+	public static final float getFloat(final Node node, final String xPath) {
+		return getNumber(node, xPath).floatValue();
+	}
+	
+	public static final Point3f getPoint1(final Node segmentNode, final List<Point3f> points) {
+		return points.get(getInt(segmentNode, "@point1"));
+	}
+	
+	public static final Point3f getPoint2(final Node segmentNode, final List<Point3f> points) {
+		return points.get(getInt(segmentNode, "@point2"));
+	}
+	
+	public static final double getConstraint(final Node segmentNode) {
+		return parseDouble(getString(segmentNode, "@constraint"));
 	}
 	
 	/**
@@ -155,21 +199,62 @@ public final class JointsModel implements Serializable {
 		
 		private double constraint;
 		
+		private final Map<Object, Object> style;
+		
 		public Segment(final Point3f point1, final Point3f point2) {
 			this.point1 = point1;
 			this.point2 = point2;
+			this.style = new LinkedHashMap<>();
 			
 			this.setConstraint(point1.distance(point2));
+			this.setStyle("visible", "true").setStyle("color", "#FF0000FF");
 		}
 		
 		public final double getConstraint() {
 			return this.constraint;
 		}
 		
-		public final JointsModel.Segment setConstraint(final double constraint) {
+		public final Segment setConstraint(final double constraint) {
 			this.constraint = constraint;
 			
 			return this;
+		}
+		
+		public final Map<Object, Object> getStyle() {
+			return this.style;
+		}
+		
+		public final String getStyleAsString() {
+			return this.getStyle().entrySet().stream().map(e -> e.getKey() + ": " + e.getValue()).reduce("", (s1, s2) -> s1 + "; " + s2);
+		}
+		
+		@SuppressWarnings("unchecked")
+		public final <V> V getStyle(final Object key) {
+			return (V) this.getStyle().get(key);
+		}
+		
+		public final Segment setStyle(final String style) {
+			for (final String keyValue : style.split("; ")) {
+				final String[] kv = keyValue.split(": ");
+				
+				if (kv.length == 2) {
+					this.setStyle(kv[0], kv[1]);
+				} else {
+					debugError((Object[]) kv);
+				}
+			}
+			
+			return this;
+		}
+		
+		public final Segment setStyle(final Object key, final Object value) {
+			this.getStyle().put(key, value);
+			
+			return this;
+		}
+		
+		public final Segment updateStyle(final Object key, final Object value) {
+			return value != null && !value.toString().isEmpty() ? this.setStyle(key, value) : this;
 		}
 		
 		public final Point3f getPoint1() {
@@ -194,6 +279,11 @@ public final class JointsModel implements Serializable {
 			final Segment that = cast(this.getClass(), object);
 			
 			return that != null && this.getPoint1() == that.getPoint1() && this.getPoint2() == that.getPoint2();
+		}
+		
+		@Override
+		public final String toString() {
+			return "constraint=" + this.getConstraint() + " style=" + this.getStyle();
 		}
 
 		private static final long serialVersionUID = 2645415714139697519L;

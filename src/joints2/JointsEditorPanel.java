@@ -4,11 +4,10 @@ import static java.lang.Float.parseFloat;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.util.stream.Collectors.toList;
+import static joints2.JointsModel.indexOf;
 import static multij.swing.SwingTools.horizontalSplit;
 import static multij.swing.SwingTools.scrollable;
 import static multij.tools.Tools.*;
-import static multij.xml.XMLTools.getNumber;
-import static multij.xml.XMLTools.getString;
 
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
@@ -41,8 +40,11 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTable;
 import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
 import javax.swing.RowFilter;
 import javax.swing.SwingUtilities;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
 import javax.swing.table.DefaultTableModel;
@@ -55,8 +57,6 @@ import joints2.JointsModel.Segment;
 import multij.swing.MouseHandler;
 import multij.swing.SwingTools;
 import multij.xml.XMLTools;
-
-import org.w3c.dom.Node;
 
 /**
  * @author codistmonk (creation 2015-07-31)
@@ -98,45 +98,6 @@ public final class JointsEditorPanel extends JPanel {
 		
 		this.add(horizontalSplit(this.getControlPanel(), this.getScene().getView()), BorderLayout.CENTER);
 	}
-	
-	private final void setupControlPanel() {
-		final DefaultTableModel properties = (DefaultTableModel) this.getControlPanel().getPropertyTable().getModel();
-		
-		properties.addRow(array(KEY_CONFIG_SHOW_CONSTRAINTS, "false"));
-		properties.addRow(array(KEY_CONFIG_SOLVE_CONSTRAINTS, "true"));
-		properties.addRow(array(KEY_CONFIG_SEGMENT_THICKNESS, Float.toString(JLView.DEFAULT_LINE_THICKNESS)));
-		properties.addRow(array(KEY_CONFIG_JOINT_RADIUS, "0.02"));
-		
-		properties.addTableModelListener(new TableModelListener() {
-			
-			@Override
-			public final void tableChanged(final TableModelEvent event) {
-				if (event.getType() == TableModelEvent.UPDATE) {
-					final Object key = properties.getValueAt(event.getFirstRow(), 0);
-					
-					if (KEY_CONFIG_SEGMENT_THICKNESS.equals(key)) {
-						final String value = properties.getValueAt(event.getFirstRow(), 1).toString();
-						final JLView view = getScene().getView();
-						final Graphics2D canvasGraphics = view.getCanvas().getGraphics();
-						
-						canvasGraphics.setStroke(new BasicStroke(parseFloat(value) / max(view.getWidth(), view.getHeight())));
-						getScene().getIds().getGraphics().setStroke(canvasGraphics.getStroke());
-						
-						scheduleUpdate();
-					}
-				}
-			}
-			
-		});
-	}
-	
-	static final List<String> KEY_CONFIG_SHOW_CONSTRAINTS = Arrays.asList("config/show_constraints");
-	
-	static final List<String> KEY_CONFIG_SEGMENT_THICKNESS = Arrays.asList("config/segment_thickness");
-	
-	static final List<String> KEY_CONFIG_JOINT_RADIUS = Arrays.asList("config/joint_radius");
-	
-	static final List<String> KEY_CONFIG_SOLVE_CONSTRAINTS = Arrays.asList("config/solve_constraints");
 	
 	public final ControlPanel getControlPanel() {
 		return this.controlPanel;
@@ -182,7 +143,7 @@ public final class JointsEditorPanel extends JPanel {
 			}
 		}
 		
-		getSelection().clear();
+		clearSelection();
 		getHighlighted()[0] = 0;
 		
 		this.getModel().clear();
@@ -278,7 +239,7 @@ public final class JointsEditorPanel extends JPanel {
 				}
 			}
 			
-			getSelection().clear();
+			this.clearSelection();
 			getJointLocations().removeAll(pointsToRemove);
 			getSegments().removeAll(segmentsToRemove);
 			this.deletePropertiesByValues(segmentsToRemove);
@@ -288,41 +249,87 @@ public final class JointsEditorPanel extends JPanel {
 		}
 	}
 	
+	public final void clearSelection() {
+		this.getControlPanel().getPropertyTable().getSelectionModel().clearSelection();
+		this.getSelection().clear();
+	}
+	
+	public final boolean addToSelection(final int id) {
+		{
+			final Object object = isJoint(id) ? this.point(id) : this.segment(id);
+			final TableModel controlModel = this.getControlPanel().getPropertyTable().getModel();
+			final ListSelectionModel selectionModel = this.getControlPanel().getPropertyTable().getSelectionModel();
+			final int n = controlModel.getRowCount();
+			
+			for (int i = 0; i < n; ++i) {
+				if (controlModel.getValueAt(i, 1) == object) {
+					final boolean result = !selectionModel.isSelectedIndex(i);
+					
+					selectionModel.addSelectionInterval(i, i);
+					
+					return result;
+				}
+			}
+		}
+		
+		throw new IllegalStateException();
+	}
+	
+	public final boolean removeFromSelection(final int id) {
+		{
+			final Object object = isJoint(id) ? this.point(id) : this.segment(id);
+			final TableModel controlModel = this.getControlPanel().getPropertyTable().getModel();
+			final ListSelectionModel selectionModel = this.getControlPanel().getPropertyTable().getSelectionModel();
+			final int n = controlModel.getRowCount();
+			
+			for (int i = 0; i < n; ++i) {
+				if (controlModel.getValueAt(i, 1) == object) {
+					selectionModel.removeSelectionInterval(i, i);
+				}
+			}
+		}
+		
+		return this.getSelection().remove(id);
+	}
+	
 	final void renderSegments(final Graphics2D g) {
 		final int n = getSegments().size();
 		
 		for (int i = 0; i < n; ++i) {
-			final int id = 2 * i + 2;
 			final Segment segment = getSegments().get(i);
-			final Path2D shape = new Path2D.Double();
-			final Point3f p1 = getScene().getTransformed(segment.getPoint1());
-			final Point3f p2 = getScene().getTransformed(segment.getPoint2());
 			
-			shape.moveTo(p1.x, p1.y);
-			shape.lineTo(p2.x, p2.y);
-			
-			getScene().draw(shape, id == getHighlighted()[0] ? Color.YELLOW : getSelection().contains(id) ? Color.RED : Color.BLUE, id, g);
-			
-			if ("true".equalsIgnoreCase(getControlPanel().getValue(KEY_CONFIG_SHOW_CONSTRAINTS).toString())) {
-				final Point2D p2D = point2D(middle(p1, p2));
-				final AffineTransform transform = getScene().getGraphicsTransform();
+			if ("true".equalsIgnoreCase(segment.getStyle("visible"))) {
+				final int id = 2 * i + 2;
+				final Path2D shape = new Path2D.Double();
+				final Point3f p1 = getScene().getTransformed(segment.getPoint1());
+				final Point3f p2 = getScene().getTransformed(segment.getPoint2());
 				
-				transform.transform(p2D, p2D);
-				getScene().setGraphicsTransform(new AffineTransform());
+				shape.moveTo(p1.x, p1.y);
+				shape.lineTo(p2.x, p2.y);
 				
-				final String string = String.format("%.1f", segment.getPoint1().distance(segment.getPoint2())) + "/" + String.format("%.1f", segment.getConstraint());
-				final Rectangle2D stringBounds = g.getFontMetrics().getStringBounds(string, g);
+				getScene().draw(shape, id == getHighlighted()[0] ? Color.YELLOW : getSelection().contains(id) ? Color.RED : decodeColor(segment.getStyle("color")), id, g);
 				
-				final float left = (float) (p2D.getX() - stringBounds.getWidth() / 2.0);
-				final float bottom = (float) (p2D.getY() + stringBounds.getHeight() / 2.0);
-				final float top = (float) (p2D.getY() - stringBounds.getHeight() / 2.0);
-				
-				stringBounds.setRect(left, top, stringBounds.getWidth(), stringBounds.getHeight());
-				
-				g.drawString(string, left, bottom);
-				
-				getScene().fillId(stringBounds, id);
-				getScene().setGraphicsTransform(transform);
+				if ("true".equalsIgnoreCase(getControlPanel().getValue(KEY_CONFIG_SHOW_CONSTRAINTS).toString())) {
+					final Point2D p2D = point2D(middle(p1, p2));
+					final AffineTransform transform = getScene().getGraphicsTransform();
+					
+					transform.transform(p2D, p2D);
+					getScene().setGraphicsTransform(new AffineTransform());
+					
+					final String string = String.format("%.1f", segment.getPoint1().distance(segment.getPoint2())) + "/" + String.format("%.1f", segment.getConstraint());
+					final Rectangle2D stringBounds = g.getFontMetrics().getStringBounds(string, g);
+					
+					final float left = (float) (p2D.getX() - stringBounds.getWidth() / 2.0);
+					final float bottom = (float) (p2D.getY() + stringBounds.getHeight() / 2.0);
+					final float top = (float) (p2D.getY() - stringBounds.getHeight() / 2.0);
+					
+					stringBounds.setRect(left, top, stringBounds.getWidth(), stringBounds.getHeight());
+					
+					g.drawString(string, left, bottom);
+					
+					getScene().fillId(stringBounds, id);
+					getScene().setGraphicsTransform(transform);
+				}
 			}
 		}
 	}
@@ -467,11 +474,12 @@ public final class JointsEditorPanel extends JPanel {
 					
 					m.transform(p);
 					
+					final int index = getJointLocations().size();
+					
 					getJointLocations().add(p);
-					final int index = getJointLocations().size() - 1;
-					this.select(getHighlighted()[0] = index * 2 + 1, event);
 					((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
 							array(list("joints/" + index), p));
+					this.select(getHighlighted()[0] = index * 2 + 1, event);
 					
 					scheduleUpdate();
 				}
@@ -479,12 +487,12 @@ public final class JointsEditorPanel extends JPanel {
 			
 			private final void select(final int id, final MouseEvent event) {
 				if (event.isShiftDown()) {
-					if (!getSelection().add(id)) {
-						getSelection().remove(id);
+					if (!addToSelection(id)) {
+						removeFromSelection(id);
 					}
 				} else {
-					getSelection().clear();
-					getSelection().add(id);
+					clearSelection();
+					addToSelection(id);
 				}
 			}
 			
@@ -519,7 +527,7 @@ public final class JointsEditorPanel extends JPanel {
 					
 					if (0 < n) {
 						if (Arrays.stream(selected).allMatch(JointsEditorPanel::isJoint)) {
-							getSelection().clear();
+							clearSelection();
 							
 							for (int i = 0; i < n; ++i) {
 								for (int j = i + 1; j < n; ++j) {
@@ -531,22 +539,30 @@ public final class JointsEditorPanel extends JPanel {
 										final int index = getSegments().size();
 										
 										getSegments().add(segment);
-										getSelection().add(index * 2 + 2);
 										((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
 												array(list("segments/" + index), segment));
+										addToSelection(index * 2 + 2);
 									}
 								}
 							}
 							
 							scheduleUpdate();
 						} else if (Arrays.stream(selected).allMatch(JointsEditorPanel::isSegment)) {
+							final ControlPanel message = new ControlPanel();
 							final double average = Arrays.stream(selected).map(JointsEditorPanel.this::segment).mapToDouble(Segment::getConstraint).average().getAsDouble();
-							final String newConstraintAsString = JOptionPane.showInputDialog("constraint:", average);
+							final String commonVisibility = Arrays.stream(selected).map(JointsEditorPanel.this::segment).map(s -> s.getStyle("visible")).reduce((v1, v2) -> v1.equals(v2) ? v1 : "").get().toString();
+							final String commonColor = Arrays.stream(selected).map(JointsEditorPanel.this::segment).map(s -> s.getStyle("color")).reduce((v1, v2) -> v1.equals(v2) ? v1 : "").get().toString();
 							
-							if (newConstraintAsString != null) {
-								final double newConstraint = Double.parseDouble(newConstraintAsString);
+							message.setValue("constraint", Double.toString(average));
+							message.setValue("visible", commonVisibility);
+							message.setValue("color", commonColor);
+							
+							if (JOptionPane.OK_OPTION == JOptionPane.showConfirmDialog(JointsEditorPanel.this, message)) {
+								final double newConstraint = Double.parseDouble(message.getValue("constraint"));
+								final String newVisibility = message.getValue("visible");
+								final String newColor = message.getValue("color");
 								
-								Arrays.stream(selected).forEach(id -> segment(id).setConstraint(newConstraint));
+								Arrays.stream(selected).forEach(id -> segment(id).setConstraint(newConstraint).updateStyle("visible", newVisibility).updateStyle("color", newColor));
 								
 								scheduleUpdate();
 							}
@@ -560,7 +576,7 @@ public final class JointsEditorPanel extends JPanel {
 		getScene().getView().setFocusable(true);
 		
 		getScene().getView().getRenderers().add(g -> {
-			if ("true".equals(getControlPanel().getValue(KEY_CONFIG_SOLVE_CONSTRAINTS).toString())) {
+			if ("true".equalsIgnoreCase(getControlPanel().getValue(KEY_CONFIG_SOLVE_CONSTRAINTS).toString())) {
 				getModel().applyConstraints(getScene().getUpdateNeeded());
 			}
 		});
@@ -578,8 +594,92 @@ public final class JointsEditorPanel extends JPanel {
 			getScene().draw(getScene().polygon("shape", new Path2D.Float()), Color.BLACK, -1, g);
 		});
 	}
-
+	
+	private final void setupControlPanel() {
+		final JTable propertyTable = this.getControlPanel().getPropertyTable();
+		final DefaultTableModel properties = (DefaultTableModel) propertyTable.getModel();
+		
+		properties.addRow(array(KEY_CONFIG_SHOW_CONSTRAINTS, "false"));
+		properties.addRow(array(KEY_CONFIG_SOLVE_CONSTRAINTS, "true"));
+		properties.addRow(array(KEY_CONFIG_SEGMENT_THICKNESS, Float.toString(JLView.DEFAULT_LINE_THICKNESS)));
+		properties.addRow(array(KEY_CONFIG_JOINT_RADIUS, "0.02"));
+		
+		properties.addTableModelListener(new TableModelListener() {
+			
+			@Override
+			public final void tableChanged(final TableModelEvent event) {
+				if (event.getType() == TableModelEvent.UPDATE) {
+					final Object key = properties.getValueAt(event.getFirstRow(), 0);
+					
+					if (KEY_CONFIG_SEGMENT_THICKNESS.equals(key)) {
+						final String value = properties.getValueAt(event.getFirstRow(), 1).toString();
+						final JLView view = getScene().getView();
+						final Graphics2D canvasGraphics = view.getCanvas().getGraphics();
+						
+						canvasGraphics.setStroke(new BasicStroke(parseFloat(value) / max(view.getWidth(), view.getHeight())));
+						getScene().getIds().getGraphics().setStroke(canvasGraphics.getStroke());
+						
+						scheduleUpdate();
+					}
+				}
+			}
+			
+		});
+		
+		final ListSelectionModel selectionModel = propertyTable.getSelectionModel();
+		
+		selectionModel.addListSelectionListener(new ListSelectionListener() {
+			
+			@Override
+			public final void valueChanged(final ListSelectionEvent event) {
+				if (!event.getValueIsAdjusting()) {
+					final int n = properties.getRowCount();
+					boolean scheduleUpdate = false;
+					
+					for (int i = 0; i < n; ++i) {
+						final Object value = properties.getValueAt(i, 1);
+						int index = indexOf(value, getJointLocations());
+						int id = 0;
+						
+						if (0 <= index) {
+							id = jointId(index);
+						} else {
+							index = indexOf(value, getSegments());
+							
+							if (0 <= index) {
+								id = segmentId(index);
+							}
+						}
+						
+						if (0 < id) {
+							if (selectionModel.isSelectedIndex(i)) {
+								getSelection().add(id);
+								scheduleUpdate = true;
+							} else {
+								getSelection().remove(id);
+								scheduleUpdate = true;
+							}
+						}
+					}
+					
+					if (scheduleUpdate) {
+						scheduleUpdate();
+					}
+				}
+			}
+			
+		});
+	}
+	
 	private static final long serialVersionUID = 6374986295888991754L;
+	
+	static final List<String> KEY_CONFIG_SHOW_CONSTRAINTS = Arrays.asList("config/show_constraints");
+	
+	static final List<String> KEY_CONFIG_SEGMENT_THICKNESS = Arrays.asList("config/segment_thickness");
+	
+	static final List<String> KEY_CONFIG_JOINT_RADIUS = Arrays.asList("config/joint_radius");
+	
+	static final List<String> KEY_CONFIG_SOLVE_CONSTRAINTS = Arrays.asList("config/solve_constraints");
 	
 	public static final Point3f center(final List<Point3f> points) {
 		final Point3f result = new Point3f();
@@ -636,32 +736,12 @@ public final class JointsEditorPanel extends JPanel {
 		return result;
 	}
 	
+	public static final Color decodeColor(final String color) {
+		return new Color(Long.decode(color).intValue(), true);
+	}
+	
 	public static final float middle(final float a, final float b) {
 		return (a + b) / 2F;
-	}
-	
-	public static final double parseDouble(final String s) {
-		return s.isEmpty() ? 0.0 : Double.parseDouble(s);
-	}
-	
-	public static final int getInt(final Node node, final String xPath) {
-		return getNumber(node, xPath).intValue();
-	}
-	
-	public static final float getFloat(final Node node, final String xPath) {
-		return getNumber(node, xPath).floatValue();
-	}
-	
-	public static final Point3f getPoint1(final Node segmentNode, final List<Point3f> points) {
-		return points.get(getInt(segmentNode, "@point1"));
-	}
-	
-	public static final Point3f getPoint2(final Node segmentNode, final List<Point3f> points) {
-		return points.get(getInt(segmentNode, "@point2"));
-	}
-	
-	public static final double getConstraint(final Node segmentNode) {
-		return parseDouble(getString(segmentNode, "@constraint"));
 	}
 	
 	static final boolean isJoint(final int id) {
@@ -670,6 +750,14 @@ public final class JointsEditorPanel extends JPanel {
 	
 	static final boolean isSegment(final int id) {
 		return (id & 1) == 0;
+	}
+	
+	static final int jointId(final int index) {
+		return index * 2 + 1;
+	}
+	
+	static final int segmentId(final int index) {
+		return index * 2 + 2;
 	}
 	
 	static final int jointIndex(final int id) {
@@ -704,6 +792,7 @@ public final class JointsEditorPanel extends JPanel {
 				
 			});
 			
+			this.getPropertyTable().setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 			this.getPropertyTable().setRowSorter(new TableRowSorter<>(this.getPropertyTable().getModel()));
 			
 			this.getFilterField().addActionListener(event -> {
@@ -734,6 +823,23 @@ public final class JointsEditorPanel extends JPanel {
 			}
 			
 			return null;
+		}
+		
+		public final ControlPanel setValue(final Object key, final Object value) {
+			final DefaultTableModel model = (DefaultTableModel) this.getPropertyTable().getModel();
+			final int n = model.getRowCount();
+			
+			for (int i = 0; i < n; ++i) {
+				if (key.equals(model.getValueAt(i, 0))) {
+					model.setValueAt(value, i, 1);
+					
+					return this;
+				}
+			}
+			
+			model.addRow(array(key, value));
+			
+			return this;
 		}
 		
 		private static final long serialVersionUID = 719479298612973559L;
