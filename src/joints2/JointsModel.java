@@ -2,12 +2,16 @@ package joints2;
 
 import static java.lang.Math.random;
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
 import static multij.tools.Tools.*;
+import static multij.xml.XMLTools.getBoolean;
+import static multij.xml.XMLTools.getNodes;
 import static multij.xml.XMLTools.getNumber;
 import static multij.xml.XMLTools.getString;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,6 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.vecmath.Point3f;
 
+import multij.tools.Pair;
 import multij.xml.XMLTools;
 
 import org.w3c.dom.Document;
@@ -33,13 +38,16 @@ public final class JointsModel implements Serializable {
 	
 	private final Map<Point3f, Point3f> previousJointLocations;
 	
-	private final List<JointsModel.Segment> segments;
+	private final List<Segment> segments;
+	
+	private final Map<String, Group> groups;
 	
 	public JointsModel(final Scene scene, final String name) {
 		this.name = name;
 		this.jointLocations = scene.getLocations().computeIfAbsent(name, k -> new ArrayList<>());
 		this.previousJointLocations = new IdentityHashMap<>();
 		this.segments = new ArrayList<>();
+		this.groups = new LinkedHashMap<>();
 	}
 	
 	public final String getName() {
@@ -54,6 +62,10 @@ public final class JointsModel implements Serializable {
 		return this.segments;
 	}
 	
+	public final Map<String, Group> getGroups() {
+		return this.groups;
+	}
+	
 	public final JointsModel clear() {
 		getJointLocations().clear();
 		getSegments().clear();
@@ -62,14 +74,21 @@ public final class JointsModel implements Serializable {
 	}
 	
 	public final JointsModel addFromXML(final Document xml) {
-		final List<Point3f> newJointLocations = XMLTools.getNodes(xml, "//joint").stream().map(n -> new Point3f(
-				getFloat(n, "@x"), getFloat(n, "@y"), getFloat(n, "@z"))).collect(toList());
-		final List<JointsModel.Segment> newSegments = XMLTools.getNodes(xml, "//segment").stream().map(n ->
+		final List<Point3f> newJointLocations = getNodes(xml, "/model/joint").stream().map(n ->
+				new Point3f(getFloat(n, "@x"), getFloat(n, "@y"), getFloat(n, "@z")))
+				.collect(toList());
+		final List<Segment> newSegments = getNodes(xml, "/model/segment").stream().map(n ->
 				new Segment(getPoint1(n, newJointLocations), getPoint2(n, newJointLocations))
-				.setConstraint(getConstraint(n)).setStyle(XMLTools.getString(n, "@style"))).collect(toList());
+				.setConstraint(getConstraint(n)).setStyle(XMLTools.getString(n, "@style")))
+				.collect(toList());
+		final Map<String, Group> newGroups = getNodes(xml, "/model/group").stream().map(n ->
+				new Pair<>(getString(n, "@name"), new Group().setSegmentSynchronizer(getBoolean(n, "@segmentSynchronizer")).addAll(getNodes(n, "joint|segment").stream().map(
+						c -> "joint".equals(c.getNodeName()) ? newJointLocations.get(getInt(c, "@index")) : newSegments.get(getInt(c, "@index"))).collect(toList()))))
+						.collect(toMap(Pair::getFirst, Pair::getSecond));
 		
-		getJointLocations().addAll(newJointLocations);
-		getSegments().addAll(newSegments);
+		this.getJointLocations().addAll(newJointLocations);
+		this.getSegments().addAll(newSegments);
+		this.getGroups().putAll(newGroups);
 		
 		return this;
 	}
@@ -86,13 +105,32 @@ public final class JointsModel implements Serializable {
 			element.setAttribute("z", Float.toString(p.z));
 		}
 		
-		for (final JointsModel.Segment segment : getSegments()) {
+		for (final Segment segment : getSegments()) {
 			final Element element = (Element) root.appendChild(result.createElement("segment"));
 			
 			element.setAttribute("point1", Integer.toString(indexOf(segment.getPoint1(), getJointLocations())));
 			element.setAttribute("point2", Integer.toString(indexOf(segment.getPoint2(), getJointLocations())));
 			element.setAttribute("constraint", Double.toString(segment.getConstraint()));
 			element.setAttribute("style", segment.getStyleAsString());
+		}
+		
+		for (final Map.Entry<String, Group> entry: this.getGroups().entrySet()) {
+			final Element element = (Element) root.appendChild(result.createElement("group"));
+			
+			element.setAttribute("name", entry.getKey());
+			element.setAttribute("segmentSynchronizer", Boolean.toString(entry.getValue().isSegmentSynchronizer()));
+			
+			for (final Object object : entry.getValue().getObjects()) {
+				if (object instanceof Segment) {
+					final Element child = (Element) element.appendChild(result.createElement("segment"));
+					
+					child.setAttribute("index", Integer.toString(this.getSegments().indexOf(object)));
+				} else {
+					final Element child = (Element) element.appendChild(result.createElement("joint"));
+					
+					child.setAttribute("index", Integer.toString(this.getJointLocations().indexOf(object)));
+				}
+			}
 		}
 		
 		return result;
@@ -173,7 +211,7 @@ public final class JointsModel implements Serializable {
 	}
 	
 	public static final float getFloat(final Node node, final String xPath) {
-		return getNumber(node, xPath).floatValue();
+		return Float.parseFloat(getString(node, xPath));
 	}
 	
 	public static final Point3f getPoint1(final Node segmentNode, final List<Point3f> points) {
@@ -293,6 +331,39 @@ public final class JointsModel implements Serializable {
 		}
 
 		private static final long serialVersionUID = 2645415714139697519L;
+		
+	}
+	
+	/**
+	 * @author codistmonk (creation 2015-08-01)
+	 */
+	public static final class Group implements Serializable {
+		
+		private final List<Object> objects = new ArrayList<>();
+		
+		private boolean segmentSynchronizer;
+		
+		public final boolean isSegmentSynchronizer() {
+			return this.segmentSynchronizer;
+		}
+		
+		public final Group setSegmentSynchronizer(final boolean segmentSynchronizer) {
+			this.segmentSynchronizer = segmentSynchronizer;
+			
+			return this;
+		}
+		
+		public final List<Object> getObjects() {
+			return this.objects;
+		}
+		
+		public final Group addAll(final Collection<Object> objects) {
+			this.getObjects().addAll(objects);
+			
+			return this;
+		}
+		
+		private static final long serialVersionUID = -4109708550865552657L;
 		
 	}
 	

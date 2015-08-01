@@ -34,6 +34,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
@@ -53,7 +54,9 @@ import javax.swing.table.TableRowSorter;
 import javax.vecmath.Matrix4f;
 import javax.vecmath.Point3f;
 
+import joints2.JointsModel.Group;
 import joints2.JointsModel.Segment;
+
 import multij.swing.MouseHandler;
 import multij.swing.SwingTools;
 import multij.xml.XMLTools;
@@ -117,6 +120,10 @@ public final class JointsEditorPanel extends JPanel {
 	
 	public final List<Segment> getSegments() {
 		return this.getModel().getSegments();
+	}
+	
+	public final Map<String, Group> getGroups() {
+		return this.getModel().getGroups();
 	}
 	
 	public final int[] getHighlighted() {
@@ -198,6 +205,10 @@ public final class JointsEditorPanel extends JPanel {
 						properties.addRow(array(list("segments/" + i), segments.get(i)));
 					}
 				}
+				
+				for (final Map.Entry<String, Group> entry : this.getModel().getGroups().entrySet()) {
+					properties.addRow(array(list("groups/" + entry.getKey()), entry.getValue()));
+				}
 			}
 			
 			scheduleUpdate();
@@ -255,20 +266,18 @@ public final class JointsEditorPanel extends JPanel {
 	}
 	
 	public final boolean addToSelection(final int id) {
-		{
-			final Object object = isJoint(id) ? this.point(id) : this.segment(id);
-			final TableModel controlModel = this.getControlPanel().getPropertyTable().getModel();
-			final ListSelectionModel selectionModel = this.getControlPanel().getPropertyTable().getSelectionModel();
-			final int n = controlModel.getRowCount();
-			
-			for (int i = 0; i < n; ++i) {
-				if (controlModel.getValueAt(i, 1) == object) {
-					final boolean result = !selectionModel.isSelectedIndex(i);
-					
-					selectionModel.addSelectionInterval(i, i);
-					
-					return result;
-				}
+		final Object object = isJoint(id) ? this.point(id) : this.segment(id);
+		final TableModel controlModel = this.getControlPanel().getPropertyTable().getModel();
+		final ListSelectionModel selectionModel = this.getControlPanel().getPropertyTable().getSelectionModel();
+		final int n = controlModel.getRowCount();
+		
+		for (int i = 0; i < n; ++i) {
+			if (controlModel.getValueAt(i, 1) == object) {
+				final boolean result = !selectionModel.isSelectedIndex(i);
+				
+				selectionModel.addSelectionInterval(i, i);
+				
+				return result;
 			}
 		}
 		
@@ -276,16 +285,14 @@ public final class JointsEditorPanel extends JPanel {
 	}
 	
 	public final boolean removeFromSelection(final int id) {
-		{
-			final Object object = isJoint(id) ? this.point(id) : this.segment(id);
-			final TableModel controlModel = this.getControlPanel().getPropertyTable().getModel();
-			final ListSelectionModel selectionModel = this.getControlPanel().getPropertyTable().getSelectionModel();
-			final int n = controlModel.getRowCount();
-			
-			for (int i = 0; i < n; ++i) {
-				if (controlModel.getValueAt(i, 1) == object) {
-					selectionModel.removeSelectionInterval(i, i);
-				}
+		final Object object = isJoint(id) ? this.point(id) : this.segment(id);
+		final TableModel controlModel = this.getControlPanel().getPropertyTable().getModel();
+		final ListSelectionModel selectionModel = this.getControlPanel().getPropertyTable().getSelectionModel();
+		final int n = controlModel.getRowCount();
+		
+		for (int i = 0; i < n; ++i) {
+			if (controlModel.getValueAt(i, 1) == object) {
+				selectionModel.removeSelectionInterval(i, i);
 			}
 		}
 		
@@ -357,6 +364,23 @@ public final class JointsEditorPanel extends JPanel {
 	
 	final Segment segment(final int id) {
 		return this.getSegments().get(segmentIndex(id));
+	}
+	
+	final int id(final Object value) {
+		int index = indexOf(value, this.getJointLocations());
+		int result = 0;
+		
+		if (0 <= index) {
+			result = jointId(index);
+		} else {
+			index = indexOf(value, getSegments());
+			
+			if (0 <= index) {
+				result = segmentId(index);
+			}
+		}
+		
+		return result;
 	}
 	
 	final List<Point3f> collectPointsFromSelection() {
@@ -521,6 +545,36 @@ public final class JointsEditorPanel extends JPanel {
 					SwingTools.show(getScene().getIds().getImage(), "ids", false);
 				} else if (event.getKeyCode() == KeyEvent.VK_BACK_SPACE) {
 					deleteSelection();
+				} else if (event.getKeyCode() == KeyEvent.VK_G) {
+					final Integer[] selected = getSelection().toArray(new Integer[getSelection().size()]);
+					final int n = selected.length;
+					
+					if (0 < n) {
+						final String action = event.isShiftDown() ? "Remove from " : "Add to ";
+						final String groupNames = JOptionPane.showInputDialog(action + "groups:");
+						
+						if (groupNames != null && !groupNames.isEmpty()) {
+							final String[] names = groupNames.split(" +");
+							
+							for (final int id : selected) {
+								final Object object = isJoint(id) ? point(id) : segment(id);
+								
+								for (final String name : names) {
+									if ("Add to ".equals(action)) {
+										getGroups().computeIfAbsent(name, k -> {
+											final Group group = new Group();
+											getControlPanel().setValue("groups/" + name, group);
+											return group;
+										}).getObjects().add(object);
+									} else {
+										getGroups().getOrDefault(name, new Group()).getObjects().remove(object);
+									}
+								}
+							}
+							
+							getControlPanel().repaint();
+						}
+					}
 				} else if (event.getKeyCode() == KeyEvent.VK_ENTER) {
 					final Integer[] selected = getSelection().toArray(new Integer[getSelection().size()]);
 					final int n = selected.length;
@@ -633,38 +687,33 @@ public final class JointsEditorPanel extends JPanel {
 			@Override
 			public final void valueChanged(final ListSelectionEvent event) {
 				if (!event.getValueIsAdjusting()) {
+					getSelection().clear();
+					
 					final int n = properties.getRowCount();
-					boolean scheduleUpdate = false;
 					
 					for (int i = 0; i < n; ++i) {
-						final Object value = properties.getValueAt(i, 1);
-						int index = indexOf(value, getJointLocations());
-						int id = 0;
-						
-						if (0 <= index) {
-							id = jointId(index);
-						} else {
-							index = indexOf(value, getSegments());
+						if (selectionModel.isSelectedIndex(i)) {
+							final Object value = properties.getValueAt(i, 1);
 							
-							if (0 <= index) {
-								id = segmentId(index);
-							}
-						}
-						
-						if (0 < id) {
-							if (selectionModel.isSelectedIndex(i)) {
-								getSelection().add(id);
-								scheduleUpdate = true;
+							if (value instanceof Group) {
+								for (final Object o : ((Group) value).getObjects()) {
+									final int id = id(o);
+									
+									if (0 < id) {
+										getSelection().add(id);
+									}
+								}
 							} else {
-								getSelection().remove(id);
-								scheduleUpdate = true;
+								final int id = id(value);
+								
+								if (0 < id) {
+									getSelection().add(id);
+								}
 							}
 						}
 					}
 					
-					if (scheduleUpdate) {
-						scheduleUpdate();
-					}
+					scheduleUpdate();
 				}
 			}
 			
