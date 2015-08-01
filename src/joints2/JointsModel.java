@@ -239,12 +239,14 @@ public final class JointsModel implements Serializable {
 		
 		public final Segment setStyle(final String style) {
 			for (final String keyValue : style.split("; ")) {
-				final String[] kv = keyValue.split(": ");
-				
-				if (kv.length == 2) {
-					this.setStyle(kv[0], kv[1]);
-				} else {
-					debugError((Object[]) kv);
+				if (!keyValue.isEmpty()) {
+					final String[] kv = keyValue.split(": ");
+					
+					if (kv.length == 2) {
+						this.setStyle(kv[0], kv[1]);
+					} else {
+						debugError((Object[]) kv);
+					}
 				}
 			}
 			
