@@ -498,12 +498,8 @@ public final class JointsEditorPanel extends JPanel {
 					
 					m.transform(p);
 					
-					final int index = getJointLocations().size();
-					
-					getJointLocations().add(p);
-					((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
-							array(list("joints/" + index), p));
-					this.select(getHighlighted()[0] = index * 2 + 1, event);
+					final int newJointId = addJoint(p);
+					this.select(getHighlighted()[0] = newJointId, event);
 					
 					scheduleUpdate();
 				}
@@ -585,18 +581,7 @@ public final class JointsEditorPanel extends JPanel {
 							
 							for (int i = 0; i < n; ++i) {
 								for (int j = i + 1; j < n; ++j) {
-									final int i1 = min(selected[i], selected[j]);
-									final int i2 = max(selected[i], selected[j]);
-									final Segment segment = new Segment(point(i1), point(i2));
-									
-									if (!getSegments().contains(segment)) {
-										final int index = getSegments().size();
-										
-										getSegments().add(segment);
-										((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
-												array(list("segments/" + index), segment));
-										addToSelection(segmentId(index));
-									}
+									addSegmentIfAbsent(selected[i], selected[j]);
 								}
 							}
 							
@@ -718,6 +703,42 @@ public final class JointsEditorPanel extends JPanel {
 			}
 			
 		});
+	}
+	
+	public final int addJoint(final Point3f location) {
+		final int index = getJointLocations().size();
+		
+		this.getJointLocations().add(location);
+		
+		((DefaultTableModel) this.getControlPanel().getPropertyTable().getModel()).addRow(
+				array(list("joints/" + index), location));
+		
+		return jointId(index);
+	}
+	
+	public final Segment addSegmentIfAbsent(final int joint1Id, final int joint2Id) {
+		final int id1 = min(joint1Id, joint2Id);
+		final int id2 = max(joint1Id, joint2Id);
+		final Segment segment = new Segment(point(id1), point(id2));
+		
+		{
+			final int index = this.getSegments().indexOf(segment);
+			
+			if (0 <= index) {
+				return this.getSegments().get(index);
+			}
+		}
+		
+		{
+			final int index = getSegments().size();
+			
+			getSegments().add(segment);
+			((DefaultTableModel) getControlPanel().getPropertyTable().getModel()).addRow(
+					array(list("segments/" + index), segment));
+			addToSelection(segmentId(index));
+			
+			return segment;
+		}
 	}
 	
 	private static final long serialVersionUID = 6374986295888991754L;
