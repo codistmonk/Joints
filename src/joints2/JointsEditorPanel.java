@@ -354,19 +354,19 @@ public final class JointsEditorPanel extends JPanel {
 		}
 	}
 	
-	final void scheduleUpdate() {
+	public final void scheduleUpdate() {
 		getScene().getUpdateNeeded().set(true);
 	}
 	
-	final Point3f point(final int id) {
+	public final Point3f point(final int id) {
 		return this.getJointLocations().get(jointIndex(id));
 	}
 	
-	final Segment segment(final int id) {
+	public final Segment segment(final int id) {
 		return this.getSegments().get(segmentIndex(id));
 	}
 	
-	final int id(final Object value) {
+	public final int id(final Object value) {
 		int index = indexOf(value, this.getJointLocations());
 		int result = 0;
 		
