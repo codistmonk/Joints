@@ -588,16 +588,16 @@ public final class JointsEditorPanel extends JPanel {
 							scheduleUpdate();
 						} else if (Arrays.stream(selected).allMatch(JointsEditorPanel::isSegment)) {
 							final ControlPanel message = new ControlPanel();
-							final double average = Arrays.stream(selected).map(JointsEditorPanel.this::segment).mapToDouble(Segment::getConstraint).average().getAsDouble();
+							final double average = Arrays.stream(selected).map(JointsEditorPanel.this::segment).mapToDouble(getModel()::evaluateConstraint).average().getAsDouble();
 							final String commonVisibility = Arrays.stream(selected).map(JointsEditorPanel.this::segment).map(s -> s.getStyle("visible")).reduce((v1, v2) -> v1.equals(v2) ? v1 : "").get().toString();
 							final String commonColor = Arrays.stream(selected).map(JointsEditorPanel.this::segment).map(s -> s.getStyle("color")).reduce((v1, v2) -> v1.equals(v2) ? v1 : "").get().toString();
 							
-							message.setValue("constraint", Double.toString(average));
+							message.setValue("constraint", selected.length == 1 ? segment(selected[0]).getConstraint() : Double.toString(average));
 							message.setValue("visible", commonVisibility);
 							message.setValue("color", commonColor);
 							
 							if (JOptionPane.OK_OPTION == JOptionPane.showConfirmDialog(JointsEditorPanel.this, message)) {
-								final double newConstraint = Double.parseDouble(nonempty(message.getValue("constraint"), "NaN"));
+								final String newConstraint = nonempty(message.getValue("constraint"), "NaN");
 								final String newVisibility = message.getValue("visible");
 								final String newColor = message.getValue("color");
 								

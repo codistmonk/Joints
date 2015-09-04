@@ -4,6 +4,7 @@ import static javax.swing.SwingUtilities.invokeLater;
 import static multij.swing.SwingTools.show;
 import static multij.swing.SwingTools.useSystemLookAndFeel;
 
+import multij.swing.ScriptingPanel;
 import multij.tools.IllegalInstantiationException;
 
 /**
@@ -21,6 +22,7 @@ public final class Demo {
 	 */
 	public static final void main(final String[] commandLineArguments) {
 		useSystemLookAndFeel();
+		ScriptingPanel.openScriptingPanelOnCtrlF2();
 		invokeLater(() -> show(new JointsEditorPanel(), Demo.class.getName(), false));
 	}
 	

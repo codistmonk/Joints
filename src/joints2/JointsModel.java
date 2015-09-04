@@ -18,9 +18,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.script.ScriptEngine;
+import javax.script.ScriptException;
 import javax.vecmath.Point3f;
 
 import multij.tools.Pair;
+import multij.tools.Scripting;
 import multij.xml.XMLTools;
 
 import org.w3c.dom.Document;
@@ -42,12 +45,15 @@ public final class JointsModel implements Serializable {
 	
 	private final Map<String, Group> groups;
 	
+	private final ScriptEngine engine;
+	
 	public JointsModel(final Scene scene, final String name) {
 		this.name = name;
 		this.jointLocations = scene.getLocations().computeIfAbsent(name, k -> new ArrayList<>());
 		this.previousJointLocations = new IdentityHashMap<>();
 		this.segments = new ArrayList<>();
 		this.groups = new LinkedHashMap<>();
+		this.engine = Scripting.getEngine("");
 	}
 	
 	public final String getName() {
@@ -110,7 +116,7 @@ public final class JointsModel implements Serializable {
 			
 			element.setAttribute("point1", Integer.toString(indexOf(segment.getPoint1(), getJointLocations())));
 			element.setAttribute("point2", Integer.toString(indexOf(segment.getPoint2(), getJointLocations())));
-			element.setAttribute("constraint", Double.toString(segment.getConstraint()));
+			element.setAttribute("constraint", segment.getConstraint());
 			element.setAttribute("style", segment.getStyleAsString());
 		}
 		
@@ -155,7 +161,7 @@ public final class JointsModel implements Serializable {
 			for (final JointsModel.Segment segment : this.getSegments()) {
 				final Point3f point1 = segment.getPoint1();
 				final Point3f point2 = segment.getPoint2();
-				final double constraint = segment.getConstraint();
+				final double constraint = this.evaluateConstraint(segment);
 				double distance = point1.distance(point2);
 				
 				if (distance != constraint) {
@@ -183,6 +189,10 @@ public final class JointsModel implements Serializable {
 				}
 			}
 		}
+	}
+	
+	public final double evaluateConstraint(final Segment segment) {
+		return segment.evaluateConstraint(this.engine);
 	}
 	
 	private static final long serialVersionUID = -7402680801009890782L;
@@ -225,8 +235,8 @@ public final class JointsModel implements Serializable {
 		return points.get(getInt(segmentNode, "@point2"));
 	}
 	
-	public static final double getConstraint(final Node segmentNode) {
-		return parseDouble(getString(segmentNode, "@constraint"));
+	public static final String getConstraint(final Node segmentNode) {
+		return getString(segmentNode, "@constraint");
 	}
 	
 	/**
@@ -238,7 +248,7 @@ public final class JointsModel implements Serializable {
 		
 		private final Point3f point2;
 		
-		private double constraint;
+		private String constraint;
 		
 		private final Map<Object, Object> style;
 		
@@ -247,19 +257,27 @@ public final class JointsModel implements Serializable {
 			this.point2 = point2;
 			this.style = new LinkedHashMap<>();
 			
-			this.setConstraint(point1.distance(point2));
+			this.setConstraint("" + point1.distance(point2));
 			this.setStyle("visible", "true").setStyle("color", "#FF0000FF");
 		}
 		
-		public final double getConstraint() {
+		public final double evaluateConstraint(final ScriptEngine engine) {
+			try {
+				return ((Number) engine.eval(this.getConstraint())).doubleValue();
+			} catch (final ScriptException exception) {
+				throw unchecked(exception);
+			}
+		}
+		
+		public final String getConstraint() {
 			return this.constraint;
 		}
 		
-		public final Segment updateConstraint(final double constraint) {
-			return Double.isNaN(constraint) ? this : this.setConstraint(constraint);
+		public final Segment updateConstraint(final String constraint) {
+			return "NaN".equals(constraint) ? this : this.setConstraint(constraint);
 		}
 		
-		public final Segment setConstraint(final double constraint) {
+		public final Segment setConstraint(final String constraint) {
 			this.constraint = constraint;
 			
 			return this;
