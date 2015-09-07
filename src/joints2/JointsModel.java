@@ -45,7 +45,7 @@ public final class JointsModel implements Serializable {
 	
 	private final Map<String, Group> groups;
 	
-	private final ScriptEngine engine;
+	private final ScriptEngine scriptEngine;
 	
 	public JointsModel(final Scene scene, final String name) {
 		this.name = name;
@@ -53,7 +53,7 @@ public final class JointsModel implements Serializable {
 		this.previousJointLocations = new IdentityHashMap<>();
 		this.segments = new ArrayList<>();
 		this.groups = new LinkedHashMap<>();
-		this.engine = Scripting.getEngine("");
+		this.scriptEngine = Scripting.getEngine("");
 	}
 	
 	public final String getName() {
@@ -70,6 +70,18 @@ public final class JointsModel implements Serializable {
 	
 	public final Map<String, Group> getGroups() {
 		return this.groups;
+	}
+	
+	public final ScriptEngine getScriptEngine() {
+		return this.scriptEngine;
+	}
+	
+	public final Object evaluate(final String script) {
+		try {
+			return this.getScriptEngine().eval(script);
+		} catch (final ScriptException exception) {
+			throw unchecked(exception);
+		}
 	}
 	
 	public final JointsModel clear() {
@@ -192,7 +204,13 @@ public final class JointsModel implements Serializable {
 	}
 	
 	public final double evaluateConstraint(final Segment segment) {
-		return segment.evaluateConstraint(this.engine);
+		try {
+			return segment.evaluateConstraint(this.getScriptEngine());
+		} catch (final Exception exception) {
+			debugError(exception);
+			
+			return 0.0;
+		}
 	}
 	
 	private static final long serialVersionUID = -7402680801009890782L;
@@ -261,9 +279,9 @@ public final class JointsModel implements Serializable {
 			this.setStyle("visible", "true").setStyle("color", "#FF0000FF");
 		}
 		
-		public final double evaluateConstraint(final ScriptEngine engine) {
+		public final double evaluateConstraint(final ScriptEngine scriptEngine) {
 			try {
-				return ((Number) engine.eval(this.getConstraint())).doubleValue();
+				return ((Number) scriptEngine.eval(this.getConstraint())).doubleValue();
 			} catch (final ScriptException exception) {
 				throw unchecked(exception);
 			}
