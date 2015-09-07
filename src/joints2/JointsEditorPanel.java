@@ -716,6 +716,15 @@ public final class JointsEditorPanel extends JPanel {
 		return jointId(index);
 	}
 	
+	public final Segment segment(final int joint1Id, final int joint2Id) {
+		final int id1 = min(joint1Id, joint2Id);
+		final int id2 = max(joint1Id, joint2Id);
+		final Segment segment = new Segment(point(id1), point(id2));
+		final int index = this.getSegments().indexOf(segment);
+		
+		return this.getSegments().get(index);
+	}
+	
 	public final Segment addSegmentIfAbsent(final int joint1Id, final int joint2Id) {
 		final int id1 = min(joint1Id, joint2Id);
 		final int id2 = max(joint1Id, joint2Id);
