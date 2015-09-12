@@ -1,5 +1,6 @@
 package joints2;
 
+import static java.lang.Math.abs;
 import static java.lang.Math.random;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
@@ -170,13 +171,13 @@ public final class JointsModel implements Serializable {
 				previous.set(point);
 			}
 			
-			for (final JointsModel.Segment segment : this.getSegments()) {
+			for (final Segment segment : this.getSegments()) {
 				final Point3f point1 = segment.getPoint1();
 				final Point3f point2 = segment.getPoint2();
 				final double constraint = this.evaluateConstraint(segment);
 				double distance = point1.distance(point2);
 				
-				if (distance != constraint) {
+				if (constraint * 0.1 < abs(distance - constraint)) {
 					final Point3f middle = JointsEditorPanel.middle(point1, point2);
 					
 					if (distance == 0.0) {
