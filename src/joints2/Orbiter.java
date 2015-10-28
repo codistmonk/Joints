@@ -35,12 +35,18 @@ public final class Orbiter extends MouseHandler {
 	
 	private float clippingDepth;
 	
+	private double xRotation;
+	
+	private double yRotation;
+	
 	public Orbiter(final AtomicBoolean updateNeeded, final Camera camera) {
 		super(updateNeeded);
 		this.camera = camera;
 		this.target = new Point3f();
 		this.distance = 4F;
 		this.clippingDepth = 1F;
+		this.xRotation = PI / 64.0;
+		this.yRotation = PI / 64.0;
 		
 		this.updateCamera();
 	}
@@ -85,15 +91,32 @@ public final class Orbiter extends MouseHandler {
 		this.clippingDepth = clippingDepth;
 	}
 	
+	public final double getXRotation() {
+		return this.xRotation;
+	}
+	
+	public final void setXRotation(final double xRotation) {
+		this.xRotation = xRotation;
+	}
+	
+	public final double getYRotation() {
+		return this.yRotation;
+	}
+	
+	public final void setYRotation(final double yRotation) {
+		this.yRotation = yRotation;
+	}
+	
 	@Override
 	public final void mouseDragged(final MouseEvent event) {
 		if (this.mouse != null) {
 			final int x = event.getX();
 			final int y = event.getY();
-			final double delta = PI / 64.0;
-			this.horizontalRadians -= (x - this.mouse.x) * delta;
-			this.verticalRadians += (y - this.mouse.y) * delta;
-			this.verticalRadians = min(max(-PI / 2.0 + delta, this.verticalRadians), PI / 2.0 - delta);
+			final double deltaX = this.getXRotation();
+			final double deltaY = this.getYRotation();
+			this.horizontalRadians -= (x - this.mouse.x) * deltaX;
+			this.verticalRadians += (y - this.mouse.y) * deltaY;
+			this.verticalRadians = min(max(-PI / 2.0 + deltaY, this.verticalRadians), PI / 2.0 - deltaY);
 			
 			this.mouse.setLocation(x, y);
 			
