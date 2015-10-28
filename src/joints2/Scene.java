@@ -102,6 +102,10 @@ public final class Scene implements Serializable, Consumer<Graphics2D> {
 		return this.camera;
 	}
 	
+	public final Matrix4f getTransform() {
+		return this.transform;
+	}
+	
 	public final Color getClearColor() {
 		return this.clearColor;
 	}
@@ -179,6 +183,11 @@ public final class Scene implements Serializable, Consumer<Graphics2D> {
 	
 	public final void fill(final Shape shape, final Color color, final int id, final Graphics2D graphics) {
 		graphics.setColor(color);
+		
+		this.fill(shape, id, graphics);
+	}
+	
+	public final void fill(final Shape shape, final int id, final Graphics2D graphics) {
 		graphics.fill(shape);
 		
 		this.fillId(shape, id);
